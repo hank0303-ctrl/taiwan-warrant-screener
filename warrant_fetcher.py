@@ -1,9 +1,10 @@
 """
-warrant_fetcher.py — 資料抓取層 v2
+warrant_fetcher.py — 資料抓取層 v3
 資料來源：
   1. ISIN 登錄所 → 取得近期掛牌權證代號清單
-  2. TWSE MIS API → 批次取得即時報價（bid/ask/量/到期日/標的代號）
-  3. Fubon Neo REST → 個股歷史 OHLCV；備援 yfinance
+  2. TWSE MIS API → 批次即時報價（bid/ask/量/到期日/標的代號）
+  3. TWSE TWTB4U / TPEX → 履約價、行使比例、發行量
+  4. Fubon Neo REST → 個股歷史 OHLCV；備援 yfinance
 """
 
 import re
@@ -27,7 +28,7 @@ MIS_URL = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp'
 def safe_float(v, default=0.0):
     try:
         s = str(v).replace(',', '').strip()
-        if s in ('-', '', 'N/A', 'null'):
+        if s in ('-', '--', '', 'N/A', 'null', 'nan'):
             return default
         return float(s)
     except Exception:
@@ -53,14 +54,12 @@ def parse_expiry(s):
     if not s:
         return None
     s = str(s).strip()
-    # 8-digit: 20260730
     m = re.match(r'^(\d{4})(\d{2})(\d{2})$', s)
     if m:
         try:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except Exception:
             pass
-    # / or - separated
     s2 = s.replace('/', '-').replace('.', '-')
     parts = s2.split('-')
     if len(parts) == 3:
@@ -90,7 +89,6 @@ def fetch_isin_warrants(min_listing_year=2024):
     Returns: list of {code, name, type, exchange, listing_date}
     """
     result = []
-    # strMode=2 上市(TWSE), strMode=4 上櫃(TPEX)
     for mode, exchange in [('2', 'tse'), ('4', 'otc')]:
         try:
             url = f'https://isin.twse.com.tw/isin/C_public.jsp?strMode={mode}'
@@ -107,8 +105,7 @@ def fetch_isin_warrants(min_listing_year=2024):
                 cfi = cells[5]
                 if not cfi.startswith('RW'):
                     continue
-                # 過濾：只要近 min_listing_year 年以後上市
-                listing = cells[2]  # 格式 2024/01/15
+                listing = cells[2]
                 try:
                     yr = int(listing.split('/')[0])
                     if yr < min_listing_year:
@@ -133,6 +130,161 @@ def fetch_isin_warrants(min_listing_year=2024):
     return result
 
 
+# ─── TWSE TWTB4U（履約價 / 行使比例 / 發行量）─────────────
+
+def fetch_twse_warrant_extra():
+    """
+    TWSE TWTB4U 取得上市權證詳細資料
+    Returns: {code: {strike, ratio, outstanding_pct, issuer}}
+    """
+    result = {}
+    urls = [
+        'https://www.twse.com.tw/rwd/zh/warrant/TWTB4U?type=ALL&response=json',
+        'https://www.twse.com.tw/exchangeReport/TWTB4U?response=json&type=ALL',
+    ]
+    for url in urls:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=25)
+            j = r.json()
+            fields = j.get('fields', [])
+            data   = j.get('data',   [])
+            if not data:
+                continue
+
+            def find_col(*keywords):
+                for i, f in enumerate(fields):
+                    if any(k in str(f) for k in keywords):
+                        return i
+                return None
+
+            idx_strike = find_col('履約價')
+            idx_ratio  = find_col('行使比例')
+            idx_issued = find_col('發行張數', '發行量', '發行股數')
+            idx_outp   = find_col('流通在外')
+            idx_issuer = find_col('發行公司', '發行人')
+
+            count = 0
+            for row in data:
+                if not row:
+                    continue
+                # 第一欄可能有空白/全型空格
+                raw_code = str(row[0]).replace('　', '').replace(' ', '').strip()
+                if not raw_code or not raw_code[0].isdigit():
+                    continue
+                try:
+                    strike = safe_float(row[idx_strike]) if idx_strike is not None else 0
+                    ratio  = safe_float(row[idx_ratio], 1.0) if idx_ratio is not None else 1.0
+                    if ratio <= 0:
+                        ratio = 1.0
+                    issued = safe_float(row[idx_issued]) if idx_issued is not None else 0
+                    outp   = safe_float(row[idx_outp])   if idx_outp   is not None else 0
+                    issuer = str(row[idx_issuer]).strip() if idx_issuer is not None else ''
+                    outp_pct = round(outp / issued * 100, 1) if issued > 0 else 50
+
+                    result[raw_code] = {
+                        'strike':          strike,
+                        'ratio':           ratio,
+                        'outstanding_pct': outp_pct,
+                        'issuer':          issuer,
+                    }
+                    count += 1
+                except Exception:
+                    pass
+
+            if count > 0:
+                print(f'[TWTB4U] 上市權證詳細: {count} 支')
+                break
+        except Exception as e:
+            print(f'[TWTB4U] 失敗: {e}')
+    return result
+
+
+def fetch_tpex_warrant_extra():
+    """
+    TPEX 取得上櫃權證：履約價、行使比例
+    Returns: {code: {strike, ratio, outstanding_pct, issuer}}
+    """
+    result = {}
+    today = date.today()
+    roc_year = today.year - 1911
+    date_str = f'{roc_year}/{today.month:02d}/{today.day:02d}'
+
+    urls = [
+        f'https://www.tpex.org.tw/web/stock/warrants/wt_quotation/wt_quotation_result.php?l=zh-tw&type=2&d={date_str}&response=json',
+        'https://www.tpex.org.tw/openapi/v1/tpex_warrants_quotes_listed',
+    ]
+    for url in urls:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            if r.status_code != 200:
+                continue
+            j = r.json()
+
+            # OpenAPI list format
+            if isinstance(j, list) and j:
+                for item in j:
+                    code = str(item.get('SecuritiesCompanyCode',
+                                item.get('代號', ''))).strip()
+                    if not code or len(code) < 5:
+                        continue
+                    strike = safe_float(item.get('ExercisePrice',
+                                        item.get('StrikePrice',
+                                        item.get('履約價格', 0))))
+                    ratio  = safe_float(item.get('ExerciseRatio',
+                                        item.get('行使比例', 1.0)), 1.0)
+                    if ratio <= 0:
+                        ratio = 1.0
+                    issuer = str(item.get('IssuerName', item.get('發行公司', ''))).strip()
+                    result[code] = {
+                        'strike': strike,
+                        'ratio':  ratio,
+                        'outstanding_pct': 50,
+                        'issuer': issuer,
+                    }
+                if result:
+                    print(f'[TPEX extra] 上櫃權證詳細: {len(result)} 支')
+                    break
+
+            # TTResult format (older TPEX style: {aaData: [...], fields: [...]})
+            elif isinstance(j, dict) and j.get('aaData'):
+                fields = j.get('fields', [])
+
+                def find_col(*keywords):
+                    for i, f in enumerate(fields):
+                        if any(k in str(f) for k in keywords):
+                            return i
+                    return None
+
+                idx_code   = 0
+                idx_strike = find_col('履約價')
+                idx_ratio  = find_col('行使比例')
+                idx_issuer = find_col('發行公司', '發行人')
+
+                for row in j['aaData']:
+                    if not row or len(row) < 3:
+                        continue
+                    code = str(row[idx_code]).strip()
+                    if not code or not code[0].isdigit():
+                        continue
+                    strike = safe_float(row[idx_strike]) if idx_strike is not None else 0
+                    ratio  = safe_float(row[idx_ratio], 1.0) if idx_ratio is not None else 1.0
+                    if ratio <= 0:
+                        ratio = 1.0
+                    issuer = str(row[idx_issuer]).strip() if idx_issuer is not None else ''
+                    result[code] = {
+                        'strike': strike,
+                        'ratio':  ratio,
+                        'outstanding_pct': 50,
+                        'issuer': issuer,
+                    }
+                if result:
+                    print(f'[TPEX extra] 上櫃權證詳細: {len(result)} 支 (aaData)')
+                    break
+        except Exception as e:
+            print(f'[TPEX extra] {url[:60]}: {e}')
+    return result
+
+
 # ─── TWSE MIS API ─────────────────────────────────────────
 
 def _parse_mis_row(row):
@@ -148,7 +300,6 @@ def _parse_mis_row(row):
         return None
 
     nf = row.get('nf', '')
-    # 解析到期日: nf = 'AES凱基57購02   -AES-KY   20260730美購'
     exp_match = re.search(r'(\d{8})', nf)
     expiry_str = exp_match.group(1) if exp_match else ''
     expiry_date = parse_expiry(expiry_str) if expiry_str else None
@@ -156,15 +307,12 @@ def _parse_mis_row(row):
     wtype = 'put' if ('售' in nf or '售' in row.get('n', '')) else 'call'
     underlying_code = str(row.get('rch', '')).strip()
 
-    # 盤前 z='-'，用 y (昨收) 作為參考價
     z_raw = row.get('z', '')
     y_raw = row.get('y', '')
     close      = safe_float(z_raw, 0) if z_raw not in ('-', '', 'null') else 0
     prev_close = safe_float(y_raw, 0)
-    price_ref  = close if close > 0 else prev_close   # 盤前用昨收
+    price_ref  = close if close > 0 else prev_close
 
-    high   = safe_float(row.get('h'), 0) or price_ref
-    low    = safe_float(row.get('l'), 0) or price_ref
     volume = safe_int(row.get('v'), 0)
 
     ask_str = row.get('a', '')
@@ -182,12 +330,12 @@ def _parse_mis_row(row):
         'underlying':      underlying_code,
         'expiry':          expiry_str,
         'days_left':       max(0, dl),
-        'close':           price_ref,       # 有成交用成交，否則用昨收
+        'close':           price_ref,
         'volume':          volume,
         'bid':             bid,
         'ask':             ask,
         'spread_pct':      round(spread_pct, 2),
-        # v1.0 暫缺，後續可由 Fubon SDK 補充
+        # 預設值；後續由 fetch_twse_warrant_extra / fetch_tpex_warrant_extra 覆蓋
         'strike':          0,
         'ratio':           1.0,
         'outstanding_pct': 50,
@@ -198,11 +346,9 @@ def _parse_mis_row(row):
 def fetch_prices_mis(warrant_list, batch_size=100, delay=0.25):
     """
     批次查詢 TWSE MIS API 取得即時報價
-    注意：MIS URL 有約 1500 字元上限，batch_size 最大 100
-    warrant_list: list of {code, exchange, ...} from fetch_isin_warrants()
-    Returns: dict {code: parsed warrant data}
+    注意：MIS URL 約 1500 字元上限，batch_size 最大 100
     """
-    batch_size = min(batch_size, 100)  # 強制上限 100
+    batch_size = min(batch_size, 100)
     result = {}
     total = len(warrant_list)
     print(f'  批次查詢 MIS，共 {total} 支（每批 {batch_size}，預估 {total//batch_size+1} 次）...')
@@ -211,14 +357,12 @@ def fetch_prices_mis(warrant_list, batch_size=100, delay=0.25):
         batch = warrant_list[i:i + batch_size]
         ex_ch = '|'.join(f'{w["exchange"]}_{w["code"]}.tw' for w in batch)
         try:
-            # 直接拼接 URL（不用 params=），避免 | 被 URL-encode 為 %7C
             url = f'{MIS_URL}?ex_ch={ex_ch}&json=1&delay=0'
             r = requests.get(url, headers=HEADERS, timeout=20)
             msgs = r.json().get('msgArray', [])
             exch_map = {w['code']: w.get('exchange', 'tse') for w in batch}
             for row in msgs:
                 parsed = _parse_mis_row(row)
-                # 有昨收（代表曾交易）且到期日還有餘裕
                 if parsed and parsed.get('close', 0) > 0 and parsed.get('days_left', 0) > 5:
                     parsed['exchange'] = exch_map.get(parsed['code'], 'tse')
                     result[parsed['code']] = parsed
@@ -237,9 +381,8 @@ def fetch_prices_mis(warrant_list, batch_size=100, delay=0.25):
 
 def fetch_all_warrants(min_listing_year=2025):
     """
-    整合 ISIN + MIS，回傳全市場有效掛牌權證 dict
-    {code: {code, name, type, underlying, expiry, days_left,
-            close, volume, bid, ask, spread_pct, exchange, ...}}
+    整合 ISIN + MIS + TWTB4U/TPEX，回傳全市場有效掛牌權證 dict
+    v3：補齊履約價、行使比例、發行量
     """
     print('[1] 從 ISIN 取得近期掛牌權證清單...')
     all_isin = fetch_isin_warrants(min_listing_year)
@@ -250,18 +393,32 @@ def fetch_all_warrants(min_listing_year=2025):
     print(f'[2] 查詢 MIS 即時報價（{len(all_isin)} 支）...')
     prices = fetch_prices_mis(all_isin)
 
-    # 補回 ISIN 的 type（名稱判斷較準確）
+    print('[3] 取得履約價 / 行使比例詳細資料...')
+    twse_extra = fetch_twse_warrant_extra()
+    tpex_extra = fetch_tpex_warrant_extra()
+    extra = {**tpex_extra, **twse_extra}   # TWSE 優先
+
+    # 補回 ISIN type + 合併 extra
     isin_map = {w['code']: w for w in all_isin}
     for code, w in prices.items():
         if code in isin_map:
             w.setdefault('type', isin_map[code]['type'])
+        if code in extra:
+            ex = extra[code]
+            w['strike']          = ex.get('strike', 0)
+            w['ratio']           = ex.get('ratio', w.get('ratio', 1.0))
+            w['outstanding_pct'] = ex.get('outstanding_pct', 50)
+            w['issuer']          = ex.get('issuer', '')
 
-    # 過濾：需有標的、到期日還有餘裕
     valid = {
         k: v for k, v in prices.items()
         if v.get('underlying') and len(v['underlying']) >= 4 and v.get('days_left', 0) >= 10
     }
-    print(f'[fetch_all_warrants] 有效權證: {len(valid)} 支')
+
+    with_strike = sum(1 for v in valid.values() if v.get('strike', 0) > 0)
+    total_v = len(valid)
+    coverage = f'{with_strike/total_v*100:.0f}%' if total_v else '—'
+    print(f'[fetch_all_warrants] 有效: {total_v} 支，履約價覆蓋率: {coverage} ({with_strike} 支)')
     return valid
 
 
