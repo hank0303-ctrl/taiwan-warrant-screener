@@ -29,7 +29,7 @@ except ImportError:
     ID_NUMBER = PASSWORD = CERT_PATH = CERT_PASS = ""
     print("[!] 找不到 warrant_config.py，Fubon SDK 將無法登入，改用 yfinance")
 
-OUTPUT_PATH = os.path.join(os.path.dirname(__file__), 'warrant_report.html')
+OUTPUT_PATH = os.path.join(os.path.dirname(__file__), 'index.html')
 
 STRONG_STOCK_MIN_SCORE = 58  # 強勢股最低分門檻
 
@@ -135,7 +135,28 @@ def run_screening():
     print(f'[報表] {OUTPUT_PATH}')
     print('='*55)
 
+    auto_push_report(start_time)
     return calls, puts
+
+
+def auto_push_report(run_time):
+    """產完報表後自動 git commit + push，更新 GitHub Pages"""
+    import subprocess
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    date_str = run_time.strftime('%Y/%m/%d %H:%M')
+    try:
+        subprocess.run(['git', 'add', 'index.html'], cwd=repo_dir, check=True, capture_output=True)
+        result = subprocess.run(
+            ['git', 'commit', '-m', f'報表自動更新 {date_str}'],
+            cwd=repo_dir, capture_output=True, text=True
+        )
+        if 'nothing to commit' in result.stdout:
+            print('[push] 報表無變更，略過 push')
+            return
+        subprocess.run(['git', 'push', 'origin', 'main'], cwd=repo_dir, check=True, capture_output=True)
+        print(f'[push] ✅ 已推上 GitHub Pages ({date_str})')
+    except subprocess.CalledProcessError as e:
+        print(f'[push] ⚠️ push 失敗: {e}')
 
 
 # ─── HTML 報表產生 ────────────────────────────────────────

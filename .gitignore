@@ -4,7 +4,7 @@ warrant_config.py
 *.p12
 *.pem
 
-# 產出報表（每次執行自動生成）
+# 舊版報表（已改為 index.html）
 warrant_report.html
 stock_report.log
 stock_report_error.log
