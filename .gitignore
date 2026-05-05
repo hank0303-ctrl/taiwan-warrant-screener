@@ -1,0 +1,19 @@
+# 憑證與個人設定（絕對不上傳）
+warrant_config.py
+*.pfx
+*.p12
+*.pem
+
+# 產出報表（每次執行自動生成）
+warrant_report.html
+stock_report.log
+stock_report_error.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# macOS
+.DS_Store

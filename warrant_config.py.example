@@ -1,0 +1,5 @@
+# warrant_config.py — 填入你的富邦帳號資訊（此檔案已加入 .gitignore）
+ID_NUMBER = "YOUR_ID"
+PASSWORD  = "YOUR_PASSWORD"
+CERT_PATH = "/Users/hank/Downloads/YOUR_ID.pfx"
+CERT_PASS = "YOUR_PASSWORD"
