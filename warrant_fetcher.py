@@ -379,11 +379,13 @@ def fetch_prices_mis(warrant_list, batch_size=100, delay=0.25):
 
 # ─── 合併取得全市場權證 ───────────────────────────────────
 
-def fetch_all_warrants(min_listing_year=2025):
+def fetch_all_warrants(min_listing_year=None):
     """
     整合 ISIN + MIS + TWTB4U/TPEX，回傳全市場有效掛牌權證 dict
     v3：補齊履約價、行使比例、發行量
     """
+    if min_listing_year is None:
+        min_listing_year = date.today().year   # 只查本年度掛牌，避免抓到大量已到期券
     print('[1] 從 ISIN 取得近期掛牌權證清單...')
     all_isin = fetch_isin_warrants(min_listing_year)
     if not all_isin:
@@ -474,6 +476,32 @@ def fetch_stock_history(sdk, symbol, days=30):
         if result and len(result) >= 15:
             return result
     return fetch_stock_history_yfinance(symbol, days)
+
+
+def fetch_stock_names(symbols, batch_size=60, delay=0.2):
+    """
+    批次查詢個股名稱，同時嘗試 tse_ 和 otc_ 前綴
+    Returns: {code: name}
+    """
+    result = {}
+    syms = list(symbols)
+    for i in range(0, len(syms), batch_size):
+        batch = syms[i:i + batch_size]
+        parts = [f'tse_{s}.tw|otc_{s}.tw' for s in batch]
+        ex_ch = '|'.join(parts)
+        try:
+            url = f'{MIS_URL}?ex_ch={ex_ch}&json=1&delay=0'
+            r = requests.get(url, headers=HEADERS, timeout=20)
+            for row in r.json().get('msgArray', []):
+                code = row.get('c', '')
+                name = row.get('n', '')
+                if code and name:
+                    result[code] = name
+        except Exception as e:
+            print(f'[fetch_stock_names] batch {i}: {e}')
+        time.sleep(delay)
+    print(f'[fetch_stock_names] 取得 {len(result)} 支股票名稱')
+    return result
 
 
 def batch_fetch_stock_histories(sdk, symbols, days=30, delay=0.25):

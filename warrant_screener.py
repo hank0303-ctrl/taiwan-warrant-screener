@@ -14,6 +14,7 @@ import schedule
 
 from warrant_fetcher import (
     fetch_all_warrants,
+    fetch_stock_names,
     batch_fetch_stock_histories,
 )
 from warrant_scorer import (
@@ -75,7 +76,8 @@ def run_screening():
     }
     print(f'    共 {len(underlying_set)} 支不重複標的股')
 
-    print('\n[3/5] 抓取個股歷史行情...')
+    print('\n[3/5] 抓取個股名稱 + 歷史行情...')
+    stock_names = fetch_stock_names(underlying_set)
     histories = batch_fetch_stock_histories(sdk, sorted(underlying_set), days=28)
     print(f'    成功取得 {len(histories)} 支股票歷史資料')
 
@@ -172,7 +174,7 @@ def run_screening():
     html = generate_html(
         strong_stocks, weak_stocks, stock_indicators,
         formal_calls, formal_puts, insufficient, high_risk,
-        start_time
+        start_time, stock_names
     )
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         f.write(html)
@@ -389,7 +391,8 @@ def _compact_row(w, show_flags=True, show_cp=True):
   </tr>'''
 
 
-def _stock_rows(stocks, indicators, top=20):
+def _stock_rows(stocks, indicators, top=20, names=None):
+    names = names or {}
     rows = ''
     for sym, sc in list(stocks.items())[:top]:
         ind = indicators.get(sym, {})
@@ -398,7 +401,6 @@ def _stock_rows(stocks, indicators, top=20):
         rsi = ind.get('rsi')
         vr  = ind.get('vol_ratio', 1)
         m20 = ind.get('ma20')
-        ma5 = ind.get('ma5')
         c   = '#27ae60' if chg >= 0 else '#e74c3c'
         sc_c = _score_color(sc)
         if m20 and pr > m20:
@@ -410,9 +412,12 @@ def _stock_rows(stocks, indicators, top=20):
         else:
             trend = '—'
             trend_c = '#aaa'
+        sname = names.get(sym, '')
+        sym_cell = (f'{sym}<br><span style="font-size:11px;color:#888">{sname}</span>'
+                    if sname else sym)
         rows += f'''
         <tr style="border-bottom:1px solid #f5f5f5">
-          <td style="padding:8px">{sym}</td>
+          <td style="padding:8px">{sym_cell}</td>
           <td style="padding:8px;font-weight:600">{pr:.2f}</td>
           <td style="padding:8px;color:{c}">{chg:+.2f}%</td>
           <td style="padding:8px">{f"{rsi:.0f}" if rsi else "—"}</td>
@@ -427,9 +432,10 @@ def _stock_rows(stocks, indicators, top=20):
 
 def generate_html(strong_stocks, weak_stocks, stock_indicators,
                   formal_calls, formal_puts, insufficient, high_risk,
-                  run_time):
+                  run_time, stock_names=None):
     global _stock_ind_cache
     _stock_ind_cache = stock_indicators
+    names = stock_names or {}
 
     now_str  = run_time.strftime('%Y/%m/%d %H:%M')
     date_str = run_time.strftime('%m/%d')
@@ -438,8 +444,8 @@ def generate_html(strong_stocks, weak_stocks, stock_indicators,
     total_all    = total_formal + len(insufficient) + len(high_risk)
     high_score   = sum(1 for w in formal_calls + formal_puts if w.get('score', 0) >= 75)
 
-    strong_rows = _stock_rows(strong_stocks, stock_indicators)
-    weak_rows   = _stock_rows(weak_stocks,   stock_indicators)
+    strong_rows = _stock_rows(strong_stocks, stock_indicators, names=names)
+    weak_rows   = _stock_rows(weak_stocks,   stock_indicators, names=names)
 
     # ── 認購正式清單 ──
     calls_html = _warrant_table(formal_calls)
