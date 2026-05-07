@@ -77,7 +77,7 @@ def run_screening():
     print(f'    共 {len(underlying_set)} 支不重複標的股')
 
     print('\n[3/5] 抓取個股名稱 + 歷史行情...')
-    stock_names = fetch_stock_names(underlying_set)
+    stock_names = fetch_stock_names()
     histories = batch_fetch_stock_histories(sdk, sorted(underlying_set), days=28)
     print(f'    成功取得 {len(histories)} 支股票歷史資料')
 

@@ -478,29 +478,38 @@ def fetch_stock_history(sdk, symbol, days=30):
     return fetch_stock_history_yfinance(symbol, days)
 
 
-def fetch_stock_names(symbols, batch_size=60, delay=0.2):
+def fetch_stock_names(symbols=None):
     """
-    批次查詢個股名稱，同時嘗試 tse_ 和 otc_ 前綴
+    從 TWSE / TPEX Open API 取得全市場股票名稱
     Returns: {code: name}
     """
     result = {}
-    syms = list(symbols)
-    for i in range(0, len(syms), batch_size):
-        batch = syms[i:i + batch_size]
-        parts = [f'tse_{s}.tw|otc_{s}.tw' for s in batch]
-        ex_ch = '|'.join(parts)
-        try:
-            url = f'{MIS_URL}?ex_ch={ex_ch}&json=1&delay=0'
-            r = requests.get(url, headers=HEADERS, timeout=20)
-            for row in r.json().get('msgArray', []):
-                code = row.get('c', '')
-                name = row.get('n', '')
-                if code and name:
-                    result[code] = name
-        except Exception as e:
-            print(f'[fetch_stock_names] batch {i}: {e}')
-        time.sleep(delay)
-    print(f'[fetch_stock_names] 取得 {len(result)} 支股票名稱')
+    try:
+        r = requests.get(
+            'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL',
+            headers=HEADERS, timeout=20)
+        for item in r.json():
+            code = str(item.get('Code', '')).strip()
+            name = str(item.get('Name', '')).strip()
+            if code and name:
+                result[code] = name
+        print(f'[fetch_stock_names] TWSE: {len(result)} 支')
+    except Exception as e:
+        print(f'[fetch_stock_names] TWSE 失敗: {e}')
+    try:
+        r2 = requests.get(
+            'https://www.tpex.org.tw/openapi/v1/tpex_listed_detail',
+            headers=HEADERS, timeout=20)
+        before = len(result)
+        for item in r2.json():
+            code = str(item.get('SecuritiesCompanyCode', '')).strip()
+            name = str(item.get('CompanyName', '')).strip()
+            if code and name and code not in result:
+                result[code] = name
+        print(f'[fetch_stock_names] TPEX: {len(result)-before} 支')
+    except Exception as e:
+        print(f'[fetch_stock_names] TPEX 失敗: {e}')
+    print(f'[fetch_stock_names] 合計 {len(result)} 支')
     return result
 
 
