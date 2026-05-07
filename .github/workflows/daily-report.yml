@@ -1,0 +1,48 @@
+name: 每日權證報表自動更新
+
+on:
+  schedule:
+    # 台灣時間 08:00 = UTC 00:00，週一到週五
+    - cron: '0 0 * * 1-5'
+  workflow_dispatch:   # 允許在 GitHub 網頁手動觸發
+
+permissions:
+  contents: write
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install requests yfinance schedule
+
+      - name: Configure git
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+      - name: 執行權證篩選器
+        run: |
+          python3 -c "
+          from warrant_screener import run_screening
+          run_screening()
+          "
+
+      - name: 確保報表已推上（備援）
+        run: |
+          git diff --quiet index.html || (
+            git add index.html &&
+            git commit -m '報表備援更新 $(date +"%Y/%m/%d %H:%M")' &&
+            git push
+          )
