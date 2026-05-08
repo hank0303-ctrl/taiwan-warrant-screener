@@ -149,12 +149,10 @@ def run_screening():
         enriched['selection_reasons'] = get_selection_reasons(enriched)
         enriched['deduction_reasons'] = get_deduction_reasons(enriched)
 
-        cp = enriched.get('completeness_pct', 0)
-
-        if enriched['has_red_flag']:
-            high_risk.append(enriched)
-        elif cp < 80:
+        if not enriched.get('formal_data_ready', False):
             insufficient.append(enriched)
+        elif enriched['has_red_flag']:
+            high_risk.append(enriched)
         else:
             if wtype == 'call':
                 formal_calls.append(enriched)
@@ -240,10 +238,11 @@ def _build_copy_text(w):
     sel    = '、'.join(w.get('selection_reasons', []))
     ded    = '、'.join(w.get('deduction_reasons', []))
     flags  = '、'.join(f['label'] for f in w.get('risk_flags', []))
+    strike_s = f"{w.get('strike',0):.2f}" if w.get('strike', 0) > 0 else '未知'
     lines = [
         f"【{direction}】{w['code']} {w.get('name','')}",
         f"標的: {w.get('underlying','')} @ {w.get('stock_price',0):.2f}",
-        f"現價: {w.get('close',0):.2f}  履約價: {w.get('strike',0):.2f}  剩餘: {w.get('days_left',0)}天",
+        f"現價: {w.get('close',0):.2f}  履約價: {strike_s}  剩餘: {w.get('days_left',0)}天",
         f"評分: {w.get('score',0)}分  完整度: {w.get('completeness_pct',0)}%",
         f"IV: {iv_s}  槓桿: {lev_s}  價性: {m_s}",
         f"行使比例: {w.get('ratio',1):.2f}  量: {w.get('volume',0)}張  價差: {w.get('spread_pct',0):.1f}%",
@@ -370,7 +369,8 @@ def _compact_row(w, show_flags=True, show_cp=True):
     cp     = w.get('completeness_pct', 0)
     cp_c   = _compl_color(cp)
     flags  = _flag_html(w.get('risk_flags', [])) if show_flags else ''
-    missing = '、'.join(w.get('missing_fields', []))
+    blocking = w.get('blocking_missing_fields') or w.get('missing_fields', [])
+    missing = '、'.join(blocking)
     copy_text = html_mod.escape(_build_copy_text(w), quote=True)
     return f'''
   <tr style="border-bottom:1px solid #f5f5f5;font-size:12px">
@@ -631,7 +631,7 @@ function copyWarrant(btn) {{
     正式認購候選（Call）
     <span class="badge" style="background:#27ae60">{len(formal_calls)} 支</span>
     <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:4px">
-      強勢股標的 · 完整度≥80% · 無紅色警示 · 量≥10張</span>
+      強勢股標的 · 核心欄位完整 · 無紅色警示 · 量≥10張</span>
   </div>
   {calls_html}
 </div>
@@ -642,7 +642,7 @@ function copyWarrant(btn) {{
     正式認售候選（Put）
     <span class="badge" style="background:#e74c3c">{len(formal_puts)} 支</span>
     <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:4px">
-      弱勢股標的 · 完整度≥80% · 無紅色警示 · 量≥10張</span>
+      弱勢股標的 · 核心欄位完整 · 無紅色警示 · 量≥10張</span>
   </div>
   {puts_html}
 </div>
@@ -653,7 +653,7 @@ function copyWarrant(btn) {{
     <summary style="font-size:15px;font-weight:700;padding:4px 0;color:#e67e22">
       資料不足清單（{len(insufficient)} 支）
       <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:6px">
-        完整度 &lt; 80% 或缺少關鍵欄位，僅供參考</span>
+        缺少履約價、買賣價等核心欄位，僅供參考</span>
     </summary>
     <div style="margin-top:12px;overflow-x:auto">
       {insuf_block}

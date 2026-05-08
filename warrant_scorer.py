@@ -9,6 +9,17 @@ from datetime import date
 
 RF_RATE = 0.015  # 無風險利率 1.5%
 
+FORMAL_REQUIRED_FIELDS = (
+    '標的現價',
+    '權證現價',
+    '買價',
+    '賣價',
+    '履約價',
+    '到期日',
+    '剩餘天數',
+    '行使比例',
+)
+
 
 # ─── 技術指標 ─────────────────────────────────────────────
 
@@ -90,6 +101,12 @@ def calc_data_completeness(w, stock_price):
     pct = round(present / len(fields) * 100)
     missing = [k for k, v in fields.items() if not v]
     return pct, missing
+
+
+def blocking_missing_fields(missing_fields):
+    """正式候選不可缺少的核心欄位。"""
+    required = set(FORMAL_REQUIRED_FIELDS)
+    return [f for f in missing_fields if f in required]
 
 
 # ─── Black-Scholes ────────────────────────────────────────
@@ -321,8 +338,11 @@ def score_warrant(w, stock_score, stock_indicators):
 
     # 資料完整度
     completeness_pct, missing_fields = calc_data_completeness(w, S)
+    blocking_missing = blocking_missing_fields(missing_fields)
     w['completeness_pct'] = completeness_pct
     w['missing_fields']   = missing_fields
+    w['blocking_missing_fields'] = blocking_missing
+    w['formal_data_ready'] = not blocking_missing
 
     # 計算衍生指標（需有履約價）
     has_strike = K > 0 and S > 0 and T > 0 and close > 0

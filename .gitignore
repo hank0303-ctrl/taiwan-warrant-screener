@@ -8,6 +8,7 @@ warrant_config.py
 warrant_report.html
 stock_report.log
 stock_report_error.log
+log/
 
 # Python
 __pycache__/
