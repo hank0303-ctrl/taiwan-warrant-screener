@@ -49,6 +49,16 @@ def last_trading_date():
     return d
 
 
+def recent_trading_dates(days=7):
+    d = date.today()
+    result = []
+    for _ in range(days):
+        if d.weekday() < 5:
+            result.append(d)
+        d -= timedelta(days=1)
+    return result
+
+
 def parse_expiry(s):
     """解析到期日，支援 20260730 / 2026/07/30 / 115/07/30 格式，回傳 date"""
     if not s:
@@ -134,18 +144,18 @@ def fetch_isin_warrants(min_listing_year=2024):
 
 def fetch_twse_warrant_extra():
     """
-    TWSE TWTB4U 取得上市權證詳細資料
+    TWSE 取得上市權證詳細資料
     Returns: {code: {strike, ratio, outstanding_pct, issuer}}
     """
     result = {}
-    urls = [
-        'https://www.twse.com.tw/rwd/zh/warrant/TWTB4U?type=ALL&response=json',
-        'https://www.twse.com.tw/exchangeReport/TWTB4U?response=json&type=ALL',
-    ]
-    for url in urls:
+    for d in recent_trading_dates():
+        date_str = d.strftime('%Y%m%d')
+        url = f'https://www.twse.com.tw/rwd/zh/stock/warrantStock?date={date_str}&response=json'
         try:
             r = requests.get(url, headers=HEADERS, timeout=25)
             j = r.json()
+            if str(j.get('stat', '')).upper() not in ('OK', 'STAT_OK'):
+                continue
             fields = j.get('fields', [])
             data   = j.get('data',   [])
             if not data:
@@ -157,34 +167,33 @@ def fetch_twse_warrant_extra():
                         return i
                 return None
 
-            idx_strike = find_col('履約價')
+            idx_code   = find_col('權證代號')
+            idx_strike = find_col('履約價格', '履約價')
             idx_ratio  = find_col('行使比例')
-            idx_issued = find_col('發行張數', '發行量', '發行股數')
-            idx_outp   = find_col('流通在外')
             idx_issuer = find_col('發行公司', '發行人')
+
+            if idx_code is None or idx_strike is None or idx_ratio is None:
+                continue
 
             count = 0
             for row in data:
                 if not row:
                     continue
                 # 第一欄可能有空白/全型空格
-                raw_code = str(row[0]).replace('　', '').replace(' ', '').strip()
+                raw_code = str(row[idx_code]).replace('　', '').replace(' ', '').strip()
                 if not raw_code or not raw_code[0].isdigit():
                     continue
                 try:
-                    strike = safe_float(row[idx_strike]) if idx_strike is not None else 0
-                    ratio  = safe_float(row[idx_ratio], 1.0) if idx_ratio is not None else 1.0
+                    strike = safe_float(row[idx_strike])
+                    ratio  = safe_float(row[idx_ratio], 1.0)
                     if ratio <= 0:
                         ratio = 1.0
-                    issued = safe_float(row[idx_issued]) if idx_issued is not None else 0
-                    outp   = safe_float(row[idx_outp])   if idx_outp   is not None else 0
                     issuer = str(row[idx_issuer]).strip() if idx_issuer is not None else ''
-                    outp_pct = round(outp / issued * 100, 1) if issued > 0 else 50
 
                     result[raw_code] = {
                         'strike':          strike,
                         'ratio':           ratio,
-                        'outstanding_pct': outp_pct,
+                        'outstanding_pct': 50,
                         'issuer':          issuer,
                     }
                     count += 1
@@ -192,10 +201,10 @@ def fetch_twse_warrant_extra():
                     pass
 
             if count > 0:
-                print(f'[TWTB4U] 上市權證詳細: {count} 支')
+                print(f'[TWSE extra] 上市權證詳細: {count} 支 ({date_str})')
                 break
         except Exception as e:
-            print(f'[TWTB4U] 失敗: {e}')
+            print(f'[TWSE extra] {date_str}: {e}')
     return result
 
 
@@ -205,83 +214,56 @@ def fetch_tpex_warrant_extra():
     Returns: {code: {strike, ratio, outstanding_pct, issuer}}
     """
     result = {}
-    today = date.today()
-    roc_year = today.year - 1911
-    date_str = f'{roc_year}/{today.month:02d}/{today.day:02d}'
+    url = 'https://www.tpex.org.tw/www/zh-tw/warrant/searchWnt'
+    payload = {
+        'code': 'ALL',
+        'company': 'ALL',
+        'bsType': 'ALL',
+        'tradeType': 'ALL',
+        'remainDay': 'ALL',
+        'response': 'json',
+    }
+    try:
+        r = requests.post(url, headers=HEADERS, data=payload, timeout=25)
+        j = r.json()
+        if str(j.get('stat', '')).lower() != 'ok':
+            return result
+        table = (j.get('tables') or [{}])[0]
+        fields = table.get('fields', [])
+        data = table.get('data', [])
 
-    urls = [
-        f'https://www.tpex.org.tw/web/stock/warrants/wt_quotation/wt_quotation_result.php?l=zh-tw&type=2&d={date_str}&response=json',
-        'https://www.tpex.org.tw/openapi/v1/tpex_warrants_quotes_listed',
-    ]
-    for url in urls:
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=15)
-            if r.status_code != 200:
+        def find_col(*keywords):
+            for i, f in enumerate(fields):
+                if any(k in str(f) for k in keywords):
+                    return i
+            return None
+
+        idx_code   = find_col('權證代號')
+        idx_strike = find_col('最新履約價', '履約價')
+        idx_ratio  = find_col('最新行使比例', '行使比例')
+        if idx_code is None or idx_strike is None or idx_ratio is None:
+            return result
+
+        for row in data:
+            if not row or len(row) <= max(idx_code, idx_strike, idx_ratio):
                 continue
-            j = r.json()
-
-            # OpenAPI list format
-            if isinstance(j, list) and j:
-                for item in j:
-                    code = str(item.get('SecuritiesCompanyCode',
-                                item.get('代號', ''))).strip()
-                    if not code or len(code) < 5:
-                        continue
-                    strike = safe_float(item.get('ExercisePrice',
-                                        item.get('StrikePrice',
-                                        item.get('履約價格', 0))))
-                    ratio  = safe_float(item.get('ExerciseRatio',
-                                        item.get('行使比例', 1.0)), 1.0)
-                    if ratio <= 0:
-                        ratio = 1.0
-                    issuer = str(item.get('IssuerName', item.get('發行公司', ''))).strip()
-                    result[code] = {
-                        'strike': strike,
-                        'ratio':  ratio,
-                        'outstanding_pct': 50,
-                        'issuer': issuer,
-                    }
-                if result:
-                    print(f'[TPEX extra] 上櫃權證詳細: {len(result)} 支')
-                    break
-
-            # TTResult format (older TPEX style: {aaData: [...], fields: [...]})
-            elif isinstance(j, dict) and j.get('aaData'):
-                fields = j.get('fields', [])
-
-                def find_col(*keywords):
-                    for i, f in enumerate(fields):
-                        if any(k in str(f) for k in keywords):
-                            return i
-                    return None
-
-                idx_code   = 0
-                idx_strike = find_col('履約價')
-                idx_ratio  = find_col('行使比例')
-                idx_issuer = find_col('發行公司', '發行人')
-
-                for row in j['aaData']:
-                    if not row or len(row) < 3:
-                        continue
-                    code = str(row[idx_code]).strip()
-                    if not code or not code[0].isdigit():
-                        continue
-                    strike = safe_float(row[idx_strike]) if idx_strike is not None else 0
-                    ratio  = safe_float(row[idx_ratio], 1.0) if idx_ratio is not None else 1.0
-                    if ratio <= 0:
-                        ratio = 1.0
-                    issuer = str(row[idx_issuer]).strip() if idx_issuer is not None else ''
-                    result[code] = {
-                        'strike': strike,
-                        'ratio':  ratio,
-                        'outstanding_pct': 50,
-                        'issuer': issuer,
-                    }
-                if result:
-                    print(f'[TPEX extra] 上櫃權證詳細: {len(result)} 支 (aaData)')
-                    break
-        except Exception as e:
-            print(f'[TPEX extra] {url[:60]}: {e}')
+            code = str(row[idx_code]).strip()
+            if not code or not code[0].isdigit():
+                continue
+            strike = safe_float(row[idx_strike])
+            ratio  = safe_float(row[idx_ratio], 1.0)
+            if ratio <= 0:
+                ratio = 1.0
+            result[code] = {
+                'strike': strike,
+                'ratio':  ratio,
+                'outstanding_pct': 50,
+                'issuer': '',
+            }
+        if result:
+            print(f'[TPEX extra] 上櫃權證詳細: {len(result)} 支')
+    except Exception as e:
+        print(f'[TPEX extra] {e}')
     return result
 
 
