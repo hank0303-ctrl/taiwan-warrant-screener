@@ -466,31 +466,51 @@ def fetch_stock_names(symbols=None):
     Returns: {code: name}
     """
     result = {}
+    wanted = {str(s).strip() for s in symbols} if symbols else None
+
+    def add_name(code, name, overwrite=False):
+        code = str(code or '').strip()
+        name = str(name or '').strip()
+        if not code or not name:
+            return
+        if wanted and code not in wanted:
+            return
+        if overwrite or code not in result:
+            result[code] = name
+
     try:
         r = requests.get(
             'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL',
             headers=HEADERS, timeout=20)
         for item in r.json():
-            code = str(item.get('Code', '')).strip()
-            name = str(item.get('Name', '')).strip()
-            if code and name:
-                result[code] = name
+            add_name(item.get('Code'), item.get('Name'))
         print(f'[fetch_stock_names] TWSE: {len(result)} 支')
     except Exception as e:
         print(f'[fetch_stock_names] TWSE 失敗: {e}')
+
     try:
         r2 = requests.get(
-            'https://www.tpex.org.tw/openapi/v1/tpex_listed_detail',
+            'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes',
             headers=HEADERS, timeout=20)
         before = len(result)
         for item in r2.json():
-            code = str(item.get('SecuritiesCompanyCode', '')).strip()
-            name = str(item.get('CompanyName', '')).strip()
-            if code and name and code not in result:
-                result[code] = name
-        print(f'[fetch_stock_names] TPEX: {len(result)-before} 支')
+            add_name(item.get('SecuritiesCompanyCode'), item.get('CompanyName'))
+        print(f'[fetch_stock_names] TPEX quotes: {len(result)-before} 支')
     except Exception as e:
-        print(f'[fetch_stock_names] TPEX 失敗: {e}')
+        print(f'[fetch_stock_names] TPEX quotes 失敗: {e}')
+
+    # 備援：若即時行情端點失效，市值列表也有上櫃代號與中文名稱。
+    try:
+        r3 = requests.get(
+            'https://www.tpex.org.tw/openapi/v1/tpex_daily_market_value',
+            headers=HEADERS, timeout=20)
+        before = len(result)
+        for item in r3.json():
+            add_name(item.get('SecuritiesCompanyCode'), item.get('CompanyName'))
+        print(f'[fetch_stock_names] TPEX market value: {len(result)-before} 支')
+    except Exception as e:
+        print(f'[fetch_stock_names] TPEX market value 失敗: {e}')
+
     print(f'[fetch_stock_names] 合計 {len(result)} 支')
     return result
 
