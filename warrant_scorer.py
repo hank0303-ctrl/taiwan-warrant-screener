@@ -20,6 +20,25 @@ FORMAL_REQUIRED_FIELDS = (
     '行使比例',
 )
 
+QUALIFICATION_RULES = (
+    ('missing_strike', '履約價缺失或為0', 'insufficient',
+     lambda w, stock_price: w.get('strike', 0) <= 0),
+    ('missing_stock_price', '標的現價缺失', 'insufficient',
+     lambda w, stock_price: stock_price <= 0),
+    ('missing_warrant_price', '權證現價缺失', 'insufficient',
+     lambda w, stock_price: w.get('close', 0) <= 0),
+    ('zero_volume', '成交量為0', 'high_risk',
+     lambda w, stock_price: w.get('volume', 0) <= 0),
+    ('low_warrant_price', '權證價格低於0.3', 'high_risk',
+     lambda w, stock_price: 0 < w.get('close', 0) < 0.3),
+    ('wide_spread_gate', '買賣價差大於5%', 'high_risk',
+     lambda w, stock_price: w.get('spread_pct') is not None and w.get('spread_pct', 0) > 5),
+    ('short_days_gate', '剩餘天數小於45天', 'high_risk',
+     lambda w, stock_price: bool(w.get('expiry')) and w.get('days_left', 0) < 45),
+    ('missing_expiry', '到期日缺失', 'insufficient',
+     lambda w, stock_price: not w.get('expiry')),
+)
+
 
 # ─── 技術指標 ─────────────────────────────────────────────
 
@@ -107,6 +126,29 @@ def blocking_missing_fields(missing_fields):
     """正式候選不可缺少的核心欄位。"""
     required = set(FORMAL_REQUIRED_FIELDS)
     return [f for f in missing_fields if f in required]
+
+
+def qualify_warrant(w, stock_price):
+    """
+    第一段資格審查。
+    回傳 (passed, target_bucket, exclusion_reasons, exclusion_keys)。
+    target_bucket: formal / insufficient / high_risk
+    """
+    reasons = []
+    keys = []
+    bucket = 'formal'
+    for key, label, target, cond in QUALIFICATION_RULES:
+        try:
+            if cond(w, stock_price):
+                keys.append(key)
+                reasons.append(label)
+                if target == 'high_risk':
+                    bucket = 'high_risk'
+                elif bucket != 'high_risk':
+                    bucket = 'insufficient'
+        except Exception:
+            continue
+    return not reasons, bucket, reasons, keys
 
 
 # ─── Black-Scholes ────────────────────────────────────────
@@ -339,10 +381,15 @@ def score_warrant(w, stock_score, stock_indicators):
     # 資料完整度
     completeness_pct, missing_fields = calc_data_completeness(w, S)
     blocking_missing = blocking_missing_fields(missing_fields)
+    qualified, qualification_bucket, exclusion_reasons, exclusion_keys = qualify_warrant(w, S)
     w['completeness_pct'] = completeness_pct
     w['missing_fields']   = missing_fields
     w['blocking_missing_fields'] = blocking_missing
-    w['formal_data_ready'] = not blocking_missing
+    w['qualification_passed'] = qualified
+    w['qualification_bucket'] = qualification_bucket
+    w['exclusion_reasons'] = exclusion_reasons
+    w['exclusion_keys'] = exclusion_keys
+    w['formal_data_ready'] = qualified and not blocking_missing
 
     # 計算衍生指標（需有履約價）
     has_strike = K > 0 and S > 0 and T > 0 and close > 0
@@ -362,94 +409,119 @@ def score_warrant(w, stock_score, stock_indicators):
         'stock_price': S,
     })
 
-    # ── 子項評分 ──
+    # ── 第一段未通過者不進入正式評分 ──
+    if not w['formal_data_ready']:
+        w['score'] = 0
+        w['score_detail'] = {
+            'trend': 0,
+            'moneyness': 0,
+            'days': 0,
+            'liquidity': 0,
+            'price': 0,
+            'iv_hv': 0,
+            'completeness': 0,
+        }
+        return w['score'], w
+
+    # ── 第二段正式評分 ──
     dl         = w.get('days_left', 0)
     spread_pct = w.get('spread_pct', 99)
     volume     = w.get('volume', 0)
+    price      = w.get('close', 0)
 
-    # 剩餘天數 (20 pts)
-    if 60 <= dl <= 90:
-        days_score = 20
-    elif 30 <= dl < 60 or 91 <= dl <= 150:
-        days_score = 14
-    elif 20 <= dl < 30 or 150 < dl <= 210:
-        days_score = 8
+    # 標的趨勢 (25 pts)
+    trend_score = int(stock_score / 100 * 25)
+
+    # 價內外程度 (20 pts)
+    if moneyness is None:
+        money_score = 0
+    elif -10 <= moneyness <= 10:
+        money_score = 20
+    elif -15 <= moneyness < -10 or 10 < moneyness <= 20:
+        money_score = 15
+    elif -20 <= moneyness < -15 or 20 < moneyness <= 30:
+        money_score = 8
     else:
-        days_score = 2
+        money_score = 3
 
-    # 買賣價差 (20 pts)
+    # 剩餘天數 (15 pts)
+    if 60 <= dl <= 120:
+        days_score = 15
+    elif 45 <= dl < 60 or 120 < dl <= 180:
+        days_score = 11
+    elif 180 < dl <= 240:
+        days_score = 7
+    else:
+        days_score = 4
+
+    # 流動性 (15 pts): 成交量 8 + 價差 7
+    if volume >= 500:
+        volume_score = 8
+    elif volume >= 200:
+        volume_score = 6
+    elif volume >= 50:
+        volume_score = 4
+    else:
+        volume_score = 2
+
     if spread_pct <= 2:
-        spread_score = 20
-    elif spread_pct <= 4:
-        spread_score = 14
-    elif spread_pct <= 6:
-        spread_score = 8
-    elif spread_pct <= 9:
-        spread_score = 4
+        spread_score = 7
+    elif spread_pct <= 3.5:
+        spread_score = 5
+    elif spread_pct <= 5:
+        spread_score = 3
     else:
         spread_score = 0
+    liquidity_score = volume_score + spread_score
 
-    # IV/HV 比 (20 pts)
+    # 權證價格合理性 (10 pts)
+    if 0.5 <= price <= 2.5:
+        price_score = 10
+    elif 0.3 <= price < 0.5 or 2.5 < price <= 5:
+        price_score = 7
+    elif 5 < price <= 10:
+        price_score = 4
+    else:
+        price_score = 2
+
+    # IV/HV 合理性 (10 pts)
     if iv_hv is None:
-        ivhv_score = 8
+        ivhv_score = 4
     elif 0.8 <= iv_hv <= 1.2:
-        ivhv_score = 20
-    elif iv_hv < 0.6:
-        ivhv_score = 15
-    elif 0.6 <= iv_hv < 0.8:
-        ivhv_score = 12
-    elif 1.2 < iv_hv <= 1.5:
         ivhv_score = 10
+    elif iv_hv < 0.6:
+        ivhv_score = 7
+    elif 0.6 <= iv_hv < 0.8:
+        ivhv_score = 8
+    elif 1.2 < iv_hv <= 1.5:
+        ivhv_score = 6
     elif 1.5 < iv_hv <= 2.0:
-        ivhv_score = 5
+        ivhv_score = 3
     else:
         ivhv_score = 0
 
-    # 標的強度 (20 pts)
-    strength_score = int(stock_score / 100 * 20)
+    # 資料完整度 (5 pts)
+    completeness_score = int(completeness_pct / 100 * 5)
 
-    # 有效槓桿 (10 pts)
-    if leverage is None:
-        lev_score = 4
-    elif 4 <= leverage <= 8:
-        lev_score = 10
-    elif 3 <= leverage < 4 or 8 < leverage <= 12:
-        lev_score = 7
-    elif 2 <= leverage < 3:
-        lev_score = 4
-    else:
-        lev_score = 2
-
-    # 價性 (10 pts)
-    if moneyness is None:
-        money_score = 5
-    elif -10 <= moneyness <= 0:
-        money_score = 10
-    elif 0 < moneyness <= 10:
-        money_score = 8
-    elif -20 <= moneyness < -10:
-        money_score = 5
-    elif 10 < moneyness <= 20:
-        money_score = 5
-    else:
-        money_score = 2
-
-    total = days_score + spread_score + ivhv_score + strength_score + lev_score + money_score
-
-    # 上限規則
-    if completeness_pct < 80:
-        total = min(total, 60)
-    if K <= 0:                      # 缺履約價
-        total = min(total, 50)
+    total = (
+        trend_score +
+        money_score +
+        days_score +
+        liquidity_score +
+        price_score +
+        ivhv_score +
+        completeness_score
+    )
 
     w['score'] = min(100, total)
     w['score_detail'] = {
-        'days':      days_score,
-        'spread':    spread_score,
-        'iv_hv':     ivhv_score,
-        'strength':  strength_score,
-        'leverage':  lev_score,
-        'moneyness': money_score,
+        'trend':       trend_score,
+        'moneyness':   money_score,
+        'days':        days_score,
+        'liquidity':   liquidity_score,
+        'price':       price_score,
+        'iv_hv':       ivhv_score,
+        'completeness': completeness_score,
     }
     return w['score'], w
 
@@ -457,10 +529,12 @@ def score_warrant(w, stock_score, stock_indicators):
 # ─── 風險標記 ─────────────────────────────────────────────
 
 RISK_FLAGS = [
-    ('near_expiry',   '近到期',    'red',    lambda w: w.get('days_left', 99) < 20),
-    ('low_volume',    '流動性低',  'red',    lambda w: 10 <= w.get('volume', 0) < 50),
+    ('zero_volume',   '成交量為0', 'red',    lambda w: w.get('volume', 0) <= 0),
+    ('near_expiry',   '近到期',    'red',    lambda w: w.get('days_left', 99) < 45),
+    ('low_volume',    '流動性低',  'red',    lambda w: 0 < w.get('volume', 0) < 50),
     ('med_volume',    '量偏少',    'yellow', lambda w: 50 <= w.get('volume', 0) < 100),
-    ('wide_spread',   '價差過大',  'red',    lambda w: w.get('spread_pct', 0) > 8),
+    ('wide_spread',   '價差過大',  'red',    lambda w: w.get('spread_pct', 0) > 5),
+    ('low_price',     '權證價格過低', 'red',  lambda w: 0 < w.get('close', 0) < 0.3),
     ('high_iv',       'IV偏貴',    'red',    lambda w: (w.get('iv_hv') or 0) > 2.0),
     ('near_delist',   '接近下市',  'red',    lambda w: w.get('outstanding_pct', 0) > 90),
     ('deep_otm',      '深度價外',  'orange', lambda w: w.get('moneyness', 0) is not None and (w.get('moneyness') or 0) < -20),
@@ -468,6 +542,7 @@ RISK_FLAGS = [
     ('high_leverage', '高槓桿',    'orange', lambda w: (w.get('leverage') or 0) > 20),
     ('expiry_warn',   '天數偏短',  'yellow', lambda w: 20 <= w.get('days_left', 99) < 60),
     ('no_strike',     '缺履約價',  'orange', lambda w: w.get('strike', 0) == 0),
+    ('no_expiry',     '缺到期日',  'orange', lambda w: not w.get('expiry')),
 ]
 
 
@@ -549,6 +624,9 @@ def get_selection_reasons(w):
 def get_deduction_reasons(w):
     """回傳扣分原因字串 list（負向）"""
     reasons = []
+
+    for reason in w.get('exclusion_reasons', []):
+        reasons.append(f'排除：{reason}')
 
     spd = w.get('spread_pct', 0)
     if spd > 6:

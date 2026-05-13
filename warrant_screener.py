@@ -119,11 +119,6 @@ def run_screening():
     for code, w in all_warrants.items():
         udly   = w.get('underlying', '')
         wtype  = w.get('type', 'call')
-        volume = w.get('volume', 0)
-
-        # 量 < 10 直接跳過，不顯示
-        if volume < 10:
-            continue
 
         # 按認購/認售分別過濾對應的強/弱勢股
         if wtype == 'call':
@@ -134,9 +129,6 @@ def run_screening():
             if udly not in weak_stocks:
                 continue
             s_score = weak_stocks[udly]
-
-        if w.get('close', 0) <= 0:
-            continue
 
         s_ind = stock_indicators.get(udly, {})
         score, enriched = score_warrant(w, s_score, s_ind)
@@ -149,10 +141,13 @@ def run_screening():
         enriched['selection_reasons'] = get_selection_reasons(enriched)
         enriched['deduction_reasons'] = get_deduction_reasons(enriched)
 
-        if not enriched.get('formal_data_ready', False):
+        if not enriched.get('qualification_passed', False):
+            if enriched.get('qualification_bucket') == 'high_risk':
+                high_risk.append(enriched)
+            else:
+                insufficient.append(enriched)
+        elif not enriched.get('formal_data_ready', False):
             insufficient.append(enriched)
-        elif enriched['has_red_flag']:
-            high_risk.append(enriched)
         else:
             if wtype == 'call':
                 formal_calls.append(enriched)
@@ -237,6 +232,7 @@ def _build_copy_text(w):
     m_s    = f"{m:+.1f}%" if m is not None else '—'
     sel    = '、'.join(w.get('selection_reasons', []))
     ded    = '、'.join(w.get('deduction_reasons', []))
+    excl   = '、'.join(w.get('exclusion_reasons', []))
     flags  = '、'.join(f['label'] for f in w.get('risk_flags', []))
     strike_s = f"{w.get('strike',0):.2f}" if w.get('strike', 0) > 0 else '未知'
     lines = [
@@ -249,6 +245,7 @@ def _build_copy_text(w):
     ]
     if sel:   lines.append(f"入選: {sel}")
     if ded:   lines.append(f"注意: {ded}")
+    if excl:  lines.append(f"排除: {excl}")
     if flags: lines.append(f"風險: {flags}")
     return '\n'.join(lines)
 
@@ -370,7 +367,8 @@ def _compact_row(w, show_flags=True, show_cp=True):
     cp_c   = _compl_color(cp)
     flags  = _flag_html(w.get('risk_flags', [])) if show_flags else ''
     blocking = w.get('blocking_missing_fields') or w.get('missing_fields', [])
-    missing = '、'.join(blocking)
+    exclusion = w.get('exclusion_reasons', [])
+    missing = '、'.join(exclusion or blocking)
     copy_text = html_mod.escape(_build_copy_text(w), quote=True)
     return f'''
   <tr style="border-bottom:1px solid #f5f5f5;font-size:12px">
@@ -382,7 +380,10 @@ def _compact_row(w, show_flags=True, show_cp=True):
       <span style="color:#aaa">@ {w.get('stock_price',0):.2f}</span></td>
     <td style="padding:7px 8px;text-align:center;font-weight:700;color:{sc_c}">{score}</td>
     {'<td style="padding:7px 8px;color:' + cp_c + '">' + str(cp) + '%<br><span style="color:#bbb;font-size:11px">' + missing + '</span></td>' if show_cp else ''}
-    <td style="padding:7px 8px">{flags}</td>
+    <td style="padding:7px 8px">
+      {flags}
+      {('<br><span style="color:#c0392b;font-size:11px">排除：' + '、'.join(exclusion) + '</span>') if exclusion else ''}
+    </td>
     <td style="padding:7px 4px">
       <button onclick="copyWarrant(this)" data-text="{copy_text}"
         style="background:#f0f0f0;border:none;border-radius:4px;
