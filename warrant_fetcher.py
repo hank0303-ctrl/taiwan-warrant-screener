@@ -64,6 +64,15 @@ def parse_expiry(s):
     if not s:
         return None
     s = str(s).strip()
+    m = re.match(r'^(\d{2,4})年(\d{1,2})月(\d{1,2})日$', s)
+    if m:
+        try:
+            y, m_, d_ = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if y < 200:
+                y += 1911
+            return date(y, m_, d_)
+        except Exception:
+            pass
     m = re.match(r'^(\d{4})(\d{2})(\d{2})$', s)
     if m:
         try:
@@ -171,6 +180,7 @@ def fetch_twse_warrant_extra():
             idx_strike = find_col('履約價格', '履約價')
             idx_ratio  = find_col('行使比例')
             idx_issuer = find_col('發行公司', '發行人')
+            idx_expiry = find_col('履約截止日', '到期日', '最後交易日')
 
             if idx_code is None or idx_strike is None or idx_ratio is None:
                 continue
@@ -189,12 +199,15 @@ def fetch_twse_warrant_extra():
                     if ratio <= 0:
                         ratio = 1.0
                     issuer = str(row[idx_issuer]).strip() if idx_issuer is not None else ''
+                    expiry = parse_expiry(row[idx_expiry]) if idx_expiry is not None else None
 
                     result[raw_code] = {
                         'strike':          strike,
                         'ratio':           ratio,
                         'outstanding_pct': 50,
                         'issuer':          issuer,
+                        'expiry':          expiry.strftime('%Y%m%d') if expiry else '',
+                        'days_left':       max(0, (expiry - date.today()).days) if expiry else 0,
                     }
                     count += 1
                 except Exception:
@@ -241,6 +254,7 @@ def fetch_tpex_warrant_extra():
         idx_code   = find_col('權證代號')
         idx_strike = find_col('最新履約價', '履約價')
         idx_ratio  = find_col('最新行使比例', '行使比例')
+        idx_expiry = find_col('到期日', '履約截止日', '最後交易日')
         if idx_code is None or idx_strike is None or idx_ratio is None:
             return result
 
@@ -254,11 +268,14 @@ def fetch_tpex_warrant_extra():
             ratio  = safe_float(row[idx_ratio], 1.0)
             if ratio <= 0:
                 ratio = 1.0
+            expiry = parse_expiry(row[idx_expiry]) if idx_expiry is not None and len(row) > idx_expiry else None
             result[code] = {
                 'strike': strike,
                 'ratio':  ratio,
                 'outstanding_pct': 50,
                 'issuer': '',
+                'expiry': expiry.strftime('%Y%m%d') if expiry else '',
+                'days_left': max(0, (expiry - date.today()).days) if expiry else 0,
             }
         if result:
             print(f'[TPEX extra] 上櫃權證詳細: {len(result)} 支')
@@ -345,7 +362,9 @@ def fetch_prices_mis(warrant_list, batch_size=100, delay=0.25):
             exch_map = {w['code']: w.get('exchange', 'tse') for w in batch}
             for row in msgs:
                 parsed = _parse_mis_row(row)
-                if parsed and parsed.get('close', 0) > 0 and parsed.get('days_left', 0) > 5:
+                # MIS no longer consistently includes expiry in nf; fill days_left
+                # later from TWSE/TPEX warrant detail sources before final filtering.
+                if parsed and parsed.get('close', 0) > 0:
                     parsed['exchange'] = exch_map.get(parsed['code'], 'tse')
                     result[parsed['code']] = parsed
         except Exception as e:
@@ -393,6 +412,10 @@ def fetch_all_warrants(min_listing_year=None):
             w['ratio']           = ex.get('ratio', w.get('ratio', 1.0))
             w['outstanding_pct'] = ex.get('outstanding_pct', 50)
             w['issuer']          = ex.get('issuer', '')
+            if ex.get('expiry'):
+                w['expiry'] = ex.get('expiry', '')
+            if ex.get('days_left'):
+                w['days_left'] = ex.get('days_left', 0)
 
     valid = {
         k: v for k, v in prices.items()
