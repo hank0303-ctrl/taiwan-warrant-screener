@@ -8,6 +8,7 @@ import html as html_mod
 import json
 import os
 import time
+from collections import Counter
 from datetime import datetime, date
 
 import schedule
@@ -37,6 +38,10 @@ OUTPUT_PATH = os.path.join(os.path.dirname(__file__), 'index.html')
 
 STRONG_STOCK_MIN_SCORE = 58   # 認購標的門檻
 WEAK_STOCK_MIN_SCORE   = 55   # 認售標的門檻
+
+
+def _fmt_pct(v):
+    return f'{v:+.1f}%' if v is not None else '—'
 
 
 # ─── Fubon SDK 初始化 ─────────────────────────────────────
@@ -138,6 +143,16 @@ def run_screening():
         enriched['has_red_flag'] = has_red_flag(flags)
         enriched['stock_score']  = s_score
         enriched['direction']    = 'bull' if wtype == 'call' else 'bear'
+        enriched['stock_position'] = s_ind.get('position_label', '盤整不明')
+        enriched['stock_pct5'] = s_ind.get('pct5')
+        enriched['stock_pct20'] = s_ind.get('pct20')
+        enriched['stock_bias5'] = s_ind.get('bias5')
+        enriched['stock_bias20'] = s_ind.get('bias20')
+        enriched['stock_consecutive_long_red'] = s_ind.get('consecutive_long_red', 0)
+        enriched['stock_near_limit_up'] = s_ind.get('near_limit_up', False)
+        enriched['stock_overheat'] = s_ind.get('overheat', False)
+        enriched['underlying_name'] = stock_names.get(udly, '')
+        add_practical_fields(enriched)
         enriched['selection_reasons'] = get_selection_reasons(enriched)
         enriched['deduction_reasons'] = get_deduction_reasons(enriched)
 
@@ -154,8 +169,8 @@ def run_screening():
             else:
                 formal_puts.append(enriched)
 
-    formal_calls.sort(key=lambda x: -x['score'])
-    formal_puts.sort(key=lambda x:  -x['score'])
+    formal_calls.sort(key=lambda x: -x.get('practical_score', x.get('score', 0)))
+    formal_puts.sort(key=lambda x:  -x.get('practical_score', x.get('score', 0)))
     insufficient.sort(key=lambda x: -x.get('completeness_pct', 0))
     high_risk.sort(key=lambda x:    -x['score'])
 
@@ -224,6 +239,140 @@ def _flag_html(flags):
     return ''.join(parts)
 
 
+def _tag(label, kind='neutral'):
+    styles = {
+        'good':    ('#eafaf1', '#1e8449', '#abebc6'),
+        'warn':    ('#fef9e7', '#8a5a00', '#f9e79f'),
+        'bad':     ('#fdedec', '#922b21', '#f5b7b1'),
+        'info':    ('#eef5ff', '#1f5f99', '#bad6f7'),
+        'neutral': ('#f4f4f4', '#666', '#e1e1e1'),
+    }
+    bg, color, border = styles.get(kind, styles['neutral'])
+    return (f'<span style="background:{bg};color:{color};border:1px solid {border};'
+            f'border-radius:4px;padding:1px 6px;font-size:11px;'
+            f'margin:1px 2px 1px 0;display:inline-block">{html_mod.escape(str(label))}</span>')
+
+
+def calc_exit_difficulty(w):
+    vol = w.get('volume', 0)
+    spd = w.get('spread_pct', 99)
+    price = w.get('close', 0)
+    cp = w.get('completeness_pct', 0)
+    points = 0
+    if vol >= 500:
+        points += 3
+    elif vol >= 200:
+        points += 2
+    elif vol >= 50:
+        points += 1
+    if spd <= 2:
+        points += 3
+    elif spd <= 3.5:
+        points += 2
+    elif spd <= 5:
+        points += 1
+    if price >= 0.5:
+        points += 2
+    elif price >= 0.3:
+        points += 1
+    if cp >= 100:
+        points += 1
+
+    if points >= 7:
+        return '低', '容易進出', 0
+    if points >= 4:
+        return '中', '可觀察', 8
+    return '高', '不易出場', 18
+
+
+def add_practical_fields(w):
+    exit_level, exit_label, exit_penalty = calc_exit_difficulty(w)
+    w['exit_difficulty'] = exit_level
+    w['exit_label'] = exit_label
+
+    score = w.get('score', 0)
+    stock_score = w.get('stock_score', 0)
+    vol = w.get('volume', 0)
+    spd = w.get('spread_pct', 99)
+    dl = w.get('days_left', 0)
+    m = w.get('moneyness')
+    lev = w.get('leverage') or 0
+    wtype = w.get('type', 'call')
+    position = w.get('stock_position', '盤整不明')
+    overheat = w.get('stock_overheat', False)
+
+    practical = score
+    practical += int(stock_score * 0.25)
+    practical += 10 if vol >= 500 else 7 if vol >= 200 else 3 if vol >= 50 else 0
+    practical += 8 if spd <= 2 else 5 if spd <= 3.5 else 2 if spd <= 5 else -10
+    practical += 8 if 60 <= dl <= 120 else 4 if 45 <= dl <= 180 else -10
+    if wtype == 'call' and position == '低位轉強':
+        practical += 8
+    elif wtype == 'call' and position == '強勢續攻':
+        practical += 4
+    elif wtype == 'put' and position == '弱勢破底':
+        practical += 10
+    elif position == '盤整不明':
+        practical -= 6
+    if overheat:
+        practical -= 18
+    if exit_level == '高':
+        practical -= exit_penalty
+    elif exit_level == '中':
+        practical -= exit_penalty
+    if vol < 100:
+        practical -= 8
+    if m is not None and m < -20:
+        practical -= 12
+    if dl < 60:
+        practical -= 8
+    if wtype == 'call' and not (3 <= lev <= 10) and lev:
+        practical -= 4
+
+    w['practical_score'] = max(0, min(150, int(round(practical))))
+
+    tags = []
+    if w['practical_score'] >= 95 and exit_level != '高' and not overheat:
+        tags.append(('推薦觀察', 'good'))
+    if overheat:
+        tags.append(('短線過熱', 'bad'))
+        tags.append(('避免追高', 'warn'))
+    if position in ('低位轉強', '強勢續攻', '弱勢破底'):
+        tags.append((position, 'good' if position != '弱勢破底' else 'info'))
+    if exit_level == '低':
+        tags.append(('出場容易', 'good'))
+    elif exit_level == '高':
+        tags.append(('出場困難', 'bad'))
+    if spd > 3.5:
+        tags.append(('價差過大', 'bad' if spd > 5 else 'warn'))
+    if dl < 60:
+        tags.append(('時間價值風險', 'warn'))
+    w['practical_tags'] = tags
+
+    if exit_level == '高':
+        advice_type = '高風險觀察'
+    elif overheat:
+        advice_type = '不建議追價'
+    elif wtype == 'call' and 60 <= dl <= 120 and exit_level == '低':
+        advice_type = '穩健觀察'
+    elif wtype == 'call':
+        advice_type = '短打觀察'
+    else:
+        advice_type = '認售觀察'
+
+    reminders = [f'建議類型：{advice_type}']
+    if overheat or w.get('stock_near_limit_up'):
+        reminders.append('追高提醒：標的今日或短線漲幅過大，建議等回測再看')
+    if exit_level == '高':
+        reminders.append('出場提醒：成交量或價差不佳，不宜重押')
+    reminders.append('停損提醒：若標的跌破 5 日線或權證跌破買進價 15%–20%，應考慮停損')
+    reminders.append('停利提醒：若權證短線上漲 20%–30%，可考慮分批停利')
+    reminders.append('時間價值提醒：若標的 2–3 天沒有續強，權證可能被時間價值侵蝕')
+    w['operation_type'] = advice_type
+    w['operation_reminders'] = reminders
+    return w
+
+
 def _build_copy_text(w):
     direction = '認購' if w.get('type') == 'call' else '認售'
     iv_s   = f"{w['iv']:.1f}%" if w.get('iv') else '—'
@@ -239,14 +388,18 @@ def _build_copy_text(w):
         f"【{direction}】{w['code']} {w.get('name','')}",
         f"標的: {w.get('underlying','')} @ {w.get('stock_price',0):.2f}",
         f"現價: {w.get('close',0):.2f}  履約價: {strike_s}  剩餘: {w.get('days_left',0)}天",
-        f"評分: {w.get('score',0)}分  完整度: {w.get('completeness_pct',0)}%",
+        f"評分: {w.get('score',0)}分  實戰優先: {w.get('practical_score',0)}分  完整度: {w.get('completeness_pct',0)}%",
         f"IV: {iv_s}  槓桿: {lev_s}  價性: {m_s}",
         f"行使比例: {w.get('ratio',1):.2f}  量: {w.get('volume',0)}張  價差: {w.get('spread_pct',0):.1f}%",
+        f"標的位置: {w.get('stock_position','—')}  5日: {_fmt_pct(w.get('stock_pct5'))}  20日: {_fmt_pct(w.get('stock_pct20'))}",
+        f"出場難度: {w.get('exit_difficulty','—')}（{w.get('exit_label','—')}）",
     ]
     if sel:   lines.append(f"入選: {sel}")
     if ded:   lines.append(f"注意: {ded}")
     if excl:  lines.append(f"排除: {excl}")
     if flags: lines.append(f"風險: {flags}")
+    if w.get('operation_reminders'):
+        lines.append('提醒: ' + '；'.join(w.get('operation_reminders', [])[:3]))
     return '\n'.join(lines)
 
 
@@ -274,6 +427,33 @@ def _warrant_card(w, show_reasons=True):
                   '<span style="background:#9b59b6;color:#fff;border-radius:3px;padding:0 4px;font-size:10px">上櫃</span>')
     cp         = w.get('completeness_pct', 0)
     cp_c       = _compl_color(cp)
+    practical  = w.get('practical_score', score)
+    pos        = w.get('stock_position', '盤整不明')
+    pos_kind   = 'bad' if pos == '短線過熱' else 'info' if pos == '弱勢破底' else 'good' if pos in ('低位轉強', '強勢續攻') else 'neutral'
+    exit_level = w.get('exit_difficulty', '—')
+    exit_kind  = 'good' if exit_level == '低' else 'warn' if exit_level == '中' else 'bad'
+    tags_html  = ''.join(_tag(t, k) for t, k in w.get('practical_tags', []))
+    pos_html   = (
+        '<div style="margin-top:5px;line-height:1.65">'
+        f'{_tag(pos, pos_kind)}{_tag("出場" + exit_level + "｜" + w.get("exit_label",""), exit_kind)}'
+        f'<span style="color:#777;font-size:11px;margin-left:2px">'
+        f'5日 {_fmt_pct(w.get("stock_pct5"))}／20日 {_fmt_pct(w.get("stock_pct20"))}　'
+        f'乖離5日 {_fmt_pct(w.get("stock_bias5"))}／20日 {_fmt_pct(w.get("stock_bias20"))}</span>'
+        '</div>'
+    )
+    heat_html = (
+        f'<div style="color:#b03a2e;font-size:11px;margin-top:2px">'
+        f'連續長紅 {w.get("stock_consecutive_long_red",0)} 根'
+        f'{"／接近漲停" if w.get("stock_near_limit_up") else ""}'
+        f'{"／短線過熱" if w.get("stock_overheat") else ""}</div>'
+    )
+    reminder_html = ''
+    if w.get('operation_reminders'):
+        reminder_html = (
+            '<div style="margin-top:6px;color:#555;font-size:11px;line-height:1.55">'
+            + '<br>'.join(html_mod.escape(x) for x in w.get('operation_reminders', [])[:3])
+            + '</div>'
+        )
 
     # copy button
     copy_text  = html_mod.escape(_build_copy_text(w), quote=True)
@@ -305,12 +485,16 @@ def _warrant_card(w, show_reasons=True):
       </div>
       <div style="font-size:12px;color:#555;margin-top:2px">{w.get('name','')}</div>
       <div style="font-size:12px;color:#888">標的: {w.get('underlying','')}
+        <span style="color:#777">{html_mod.escape(w.get('underlying_name',''))}</span>
         <span style="color:{stk_c}">@ {w.get('stock_price',0):.2f} ({stk_chg:+.2f}%)</span></div>
       <div style="margin-top:4px">{flags_html}</div>
-      {sel_html}{ded_html}
+      <div style="margin-top:4px">{tags_html}</div>
+      {pos_html}{heat_html}
+      {sel_html}{ded_html}{reminder_html}
     </td>
     <td style="padding:10px 8px;text-align:center;white-space:nowrap">
       <div style="font-size:26px;font-weight:700;color:{sc_c}">{score}</div>
+      <div style="font-size:11px;color:#555;margin-top:-2px">實戰 {practical}</div>
       <div style="background:#eee;border-radius:3px;height:5px;margin:4px 0 6px">
         <div style="width:{score}%;background:{sc_c};height:5px;border-radius:3px"></div>
       </div>
@@ -429,6 +613,128 @@ def _stock_rows(stocks, indicators, top=20, names=None):
     return rows
 
 
+def build_watchlists(formal_calls, formal_puts):
+    steady_calls = [
+        w for w in formal_calls
+        if 60 <= w.get('days_left', 0) <= 120
+        and w.get('volume', 0) >= 100
+        and w.get('spread_pct', 99) <= 3.5
+        and (w.get('leverage') is None or 3 <= w.get('leverage', 0) <= 8)
+        and (w.get('moneyness') is None or w.get('moneyness', 0) >= -15)
+        and not w.get('stock_overheat')
+        and w.get('exit_difficulty') != '高'
+    ]
+    scalp_calls = [
+        w for w in formal_calls
+        if w.get('stock_score', 0) >= 65
+        and w.get('volume', 0) >= 100
+        and w.get('spread_pct', 99) <= 4
+        and w.get('days_left', 0) >= 45
+        and w.get('exit_difficulty') != '高'
+    ]
+    put_watch = [
+        w for w in formal_puts
+        if w.get('stock_score', 0) >= 55
+        and w.get('volume', 0) >= 50
+        and w.get('spread_pct', 99) <= 4
+        and w.get('stock_position') in ('弱勢破底', '盤整不明')
+        and w.get('exit_difficulty') != '高'
+    ]
+
+    key = lambda w: -w.get('practical_score', w.get('score', 0))
+    return {
+        '穩健認購 Top 5': sorted(steady_calls, key=key)[:5],
+        '短打認購 Top 5': sorted(scalp_calls, key=key)[:5],
+        '認售觀察 Top 5': sorted(put_watch, key=key)[:5],
+    }
+
+
+def _watch_row(w):
+    code = html_mod.escape(w.get('code', ''))
+    udly = html_mod.escape(w.get('underlying', ''))
+    uname = html_mod.escape(w.get('underlying_name', ''))
+    pos = w.get('stock_position', '—')
+    pos_kind = 'bad' if pos == '短線過熱' else 'info' if pos == '弱勢破底' else 'good' if pos in ('低位轉強', '強勢續攻') else 'neutral'
+    chase = _tag('追高風險', 'bad') if w.get('stock_overheat') or (w.get('chg_pct') or 0) >= 7 else ''
+    tags = ''.join(_tag(t, k) for t, k in w.get('practical_tags', [])[:3])
+    return f'''
+    <tr style="border-bottom:1px solid #f2f2f2">
+      <td style="padding:8px">
+        <b>{code}</b><br>
+        <span style="font-size:11px;color:#777">{udly} {uname}</span>
+      </td>
+      <td style="padding:8px;text-align:center;font-weight:700;color:{_score_color(w.get('practical_score',0))}">
+        {w.get('practical_score',0)}<br><span style="font-size:11px;color:#999;font-weight:400">總分 {w.get('score',0)}</span>
+      </td>
+      <td style="padding:8px;font-size:12px">
+        現價 {w.get('close',0):.2f}／量 {w.get('volume',0):,}<br>
+        價差 {w.get('spread_pct',0):.1f}%／剩 {w.get('days_left',0)}天
+      </td>
+      <td style="padding:8px;font-size:12px">
+        {_tag(pos, pos_kind)}{_tag(w.get('exit_label','—'), 'good' if w.get('exit_difficulty') == '低' else 'warn' if w.get('exit_difficulty') == '中' else 'bad')}{chase}<br>
+        <span style="color:#777">5日 {_fmt_pct(w.get('stock_pct5'))}／20日 {_fmt_pct(w.get('stock_pct20'))}</span><br>
+        {tags}
+      </td>
+    </tr>'''
+
+
+def _watchlist_block(watchlists):
+    blocks = []
+    for title, items in watchlists.items():
+        rows = ''.join(_watch_row(w) for w in items)
+        if not rows:
+            rows = '<tr><td colspan="4" style="padding:12px;color:#aaa">今日沒有符合這組實戰條件的權證</td></tr>'
+        blocks.append(f'''
+        <div style="margin-bottom:14px">
+          <div style="font-weight:700;margin:4px 0 8px">{title}</div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="background:#f8f8f8;color:#888;font-size:12px">
+                  <th style="padding:8px;text-align:left">權證 / 標的</th>
+                  <th style="padding:8px;text-align:center">實戰分</th>
+                  <th style="padding:8px;text-align:left">權證條件</th>
+                  <th style="padding:8px;text-align:left">觀察重點</th>
+                </tr>
+              </thead>
+              <tbody>{rows}</tbody>
+            </table>
+          </div>
+        </div>''')
+    return ''.join(blocks)
+
+
+def build_risk_stats(high_risk, insufficient):
+    stats = Counter()
+    for w in high_risk:
+        keys = set(w.get('exclusion_keys', []))
+        flag_keys = {f.get('key') for f in w.get('risk_flags', [])}
+        if 'zero_volume' in keys:
+            stats['成交量為0'] += 1
+        if 'low_volume' in flag_keys:
+            stats['成交量偏低'] += 1
+        if 'wide_spread_gate' in keys or 'wide_spread' in flag_keys:
+            stats['買賣價差過大'] += 1
+        if 'short_days_gate' in keys or 'near_expiry' in flag_keys:
+            stats['剩餘天數過短'] += 1
+        if 'deep_otm' in flag_keys:
+            stats['深度價外'] += 1
+        if 'high_iv' in flag_keys:
+            stats['IV偏貴'] += 1
+    stats['資料不足'] = len(insufficient)
+    return stats
+
+
+def _risk_stats_block(stats):
+    order = ['成交量為0', '成交量偏低', '買賣價差過大', '剩餘天數過短', '深度價外', 'IV偏貴', '資料不足']
+    cells = ''.join(
+        f'<div class="stat-box"><div class="stat-val" style="color:#e67e22">{stats.get(k,0)}</div>'
+        f'<div class="stat-lbl">{k}</div></div>'
+        for k in order
+    )
+    return f'<div class="stat-grid">{cells}</div>'
+
+
 # ─── HTML 報表產生 ────────────────────────────────────────
 
 def generate_html(strong_stocks, weak_stocks, stock_indicators,
@@ -444,6 +750,10 @@ def generate_html(strong_stocks, weak_stocks, stock_indicators,
     total_formal = len(formal_calls) + len(formal_puts)
     total_all    = total_formal + len(insufficient) + len(high_risk)
     high_score   = sum(1 for w in formal_calls + formal_puts if w.get('score', 0) >= 75)
+    watchlists   = build_watchlists(formal_calls, formal_puts)
+    watch_html   = _watchlist_block(watchlists)
+    risk_stats   = build_risk_stats(high_risk, insufficient)
+    risk_stats_html = _risk_stats_block(risk_stats)
 
     strong_rows = _stock_rows(strong_stocks, stock_indicators, names=names)
     weak_rows   = _stock_rows(weak_stocks,   stock_indicators, names=names)
@@ -556,8 +866,11 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
-<!-- ── 統計 ── -->
+<!-- ── A. 今日市場總覽 ── -->
 <div class="card">
+  <div class="card-title">今日市場總覽
+    <span style="font-size:11px;font-weight:normal;color:#aaa">僅供觀察，不構成投資建議</span>
+  </div>
   <div class="stat-grid">
     <div class="stat-box">
       <div class="stat-val" style="color:#27ae60">{len(formal_calls)}</div>
@@ -582,7 +895,17 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
-<!-- ── 強勢股 ── -->
+<!-- ── B. 今日最值得觀察 ── -->
+<div class="card">
+  <div class="card-title">
+    今日最值得觀察 Top 10
+    <span class="badge" style="background:#1f7a5c">實戰優先排序</span>
+    <span style="font-size:11px;font-weight:normal;color:#aaa">三組各顯示最多 5 檔，先看出場容易與不追高</span>
+  </div>
+  {watch_html}
+</div>
+
+<!-- ── C. 強勢股 ── -->
 <div class="card">
   <div class="card-title">
     強勢標的股 Top {min(len(strong_stocks),20)}
@@ -604,7 +927,7 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
-<!-- ── 弱勢股 ── -->
+<!-- ── D. 弱勢股 ── -->
 <div class="card">
   <div class="card-title">
     弱勢標的股 Top {min(len(weak_stocks),20)}
@@ -626,32 +949,37 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
-<!-- ── 正式認購候選 ── -->
+<!-- ── E. 正式認購候選 ── -->
 <div class="card">
   <div class="card-title">
     正式認購候選（Call）
     <span class="badge" style="background:#27ae60">{len(formal_calls)} 支</span>
     <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:4px">
-      強勢股標的 · 核心欄位完整 · 無紅色警示 · 量≥10張</span>
+      強勢股標的 · 通過資格審查 · 依實戰優先分數排序</span>
   </div>
   {calls_html}
 </div>
 
-<!-- ── 正式認售候選 ── -->
+<!-- ── F. 正式認售候選 ── -->
 <div class="card">
   <div class="card-title">
     正式認售候選（Put）
     <span class="badge" style="background:#e74c3c">{len(formal_puts)} 支</span>
     <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:4px">
-      弱勢股標的 · 核心欄位完整 · 無紅色警示 · 量≥10張</span>
+      弱勢股標的 · 通過資格審查 · 依實戰優先分數排序</span>
   </div>
   {puts_html}
 </div>
 
-<!-- ── 資料不足 ── -->
+<!-- ── G. 高風險排除統計 ── -->
 <div class="card">
+  <div class="card-title">
+    高風險排除原因統計
+    <span style="font-size:11px;font-weight:normal;color:#aaa">用來判斷今天權證市場是否好做</span>
+  </div>
+  {risk_stats_html}
   <details>
-    <summary style="font-size:15px;font-weight:700;padding:4px 0;color:#e67e22">
+    <summary style="font-size:13px;font-weight:700;padding:14px 0 4px;color:#e67e22">
       資料不足清單（{len(insufficient)} 支）
       <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:6px">
         缺少履約價、買賣價等核心欄位，僅供參考</span>
@@ -662,7 +990,7 @@ function copyWarrant(btn) {{
   </details>
 </div>
 
-<!-- ── 高風險排除 ── -->
+<!-- ── H. 高風險排除清單 ── -->
 <div class="card">
   <details>
     <summary style="font-size:15px;font-weight:700;padding:4px 0;color:#e74c3c">

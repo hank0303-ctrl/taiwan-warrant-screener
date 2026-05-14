@@ -98,6 +98,83 @@ def calc_vol_ratio(volumes):
     return round(volumes[-1] / avg5, 2)
 
 
+def _num(v, default=0.0):
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
+def calc_pct_change(closes, n):
+    if len(closes) <= n or closes[-n - 1] <= 0:
+        return None
+    return round((closes[-1] - closes[-n - 1]) / closes[-n - 1] * 100, 2)
+
+
+def calc_ma_bias(price, ma):
+    if not ma:
+        return None
+    return round((price - ma) / ma * 100, 2)
+
+
+def calc_consecutive_long_red(candles):
+    """連續長紅 K 數。以實體紅 K 且漲幅約 2% 以上作為簡化判斷。"""
+    count = 0
+    for c in reversed(candles):
+        close = _num(c.get('close'))
+        open_ = _num(c.get('open')) or close
+        if open_ > 0 and close > open_ and (close - open_) / open_ * 100 >= 2:
+            count += 1
+        else:
+            break
+    return count
+
+
+def analyze_stock_position(candles, price, chg_pct, ma5, ma20, rsi):
+    pct5 = calc_pct_change([_num(c.get('close')) for c in candles if c.get('close')], 5)
+    pct20 = calc_pct_change([_num(c.get('close')) for c in candles if c.get('close')], 20)
+    bias5 = calc_ma_bias(price, ma5)
+    bias20 = calc_ma_bias(price, ma20)
+    long_red = calc_consecutive_long_red(candles)
+    near_limit_up = chg_pct >= 8.5
+    overheat = (
+        near_limit_up or
+        chg_pct >= 7 or
+        (pct5 is not None and pct5 >= 12) or
+        (bias5 is not None and bias5 >= 7) or
+        (rsi is not None and rsi >= 78) or
+        long_red >= 3
+    )
+
+    if overheat:
+        label = '短線過熱'
+        priority = 2
+    elif ma5 and ma20 and price < ma5 and ma5 < ma20 and (pct20 or 0) <= -5:
+        label = '弱勢破底'
+        priority = 1
+    elif ma5 and ma20 and price > ma5 and ma5 >= ma20 and 0 <= (pct5 or 0) <= 8 and (pct20 or 0) <= 12:
+        label = '低位轉強'
+        priority = 5
+    elif ma5 and ma20 and price > ma5 and ma5 > ma20 and (pct20 or 0) > 5:
+        label = '強勢續攻'
+        priority = 4
+    else:
+        label = '盤整不明'
+        priority = 3
+
+    return {
+        'pct5': pct5,
+        'pct20': pct20,
+        'bias5': bias5,
+        'bias20': bias20,
+        'consecutive_long_red': long_red,
+        'near_limit_up': near_limit_up,
+        'overheat': overheat,
+        'position_label': label,
+        'position_priority': priority,
+    }
+
+
 # ─── 資料完整度 ───────────────────────────────────────────
 
 def calc_data_completeness(w, stock_price):
@@ -234,6 +311,7 @@ def score_stock(candles):
     rsi       = calc_rsi(closes)
     vol_ratio = calc_vol_ratio(volumes)
     hv20      = calc_hv20(closes)
+    position  = analyze_stock_position(candles, price, chg_pct, ma5, ma20, rsi)
 
     score = 40  # base
 
@@ -281,6 +359,7 @@ def score_stock(candles):
         'score':     score,
         'direction': 'bull',
     }
+    indicators.update(position)
     return score, indicators
 
 
@@ -305,6 +384,7 @@ def score_stock_bearish(candles):
     rsi       = calc_rsi(closes)
     vol_ratio = calc_vol_ratio(volumes)
     hv20      = calc_hv20(closes)
+    position  = analyze_stock_position(candles, price, chg_pct, ma5, ma20, rsi)
 
     score = 25  # base（空頭門檻略高，避免誤判震盪）
 
@@ -358,6 +438,7 @@ def score_stock_bearish(candles):
         'score':     score,
         'direction': 'bear',
     }
+    indicators.update(position)
     return score, indicators
 
 
