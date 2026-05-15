@@ -285,6 +285,33 @@ def calc_exit_difficulty(w):
     return '高', '不易出場', 18
 
 
+def calc_risk_level(w):
+    exit_level = w.get('exit_difficulty', '中')
+    risk_points = 0
+    if exit_level == '高':
+        risk_points += 3
+    elif exit_level == '中':
+        risk_points += 1
+    if w.get('stock_overheat'):
+        risk_points += 2
+    if w.get('spread_pct', 0) > 3.5:
+        risk_points += 1
+    if w.get('volume', 0) < 100:
+        risk_points += 1
+    if (w.get('moneyness') is not None and w.get('moneyness', 0) < -20):
+        risk_points += 1
+    if (w.get('iv_hv') or 0) > 1.5:
+        risk_points += 1
+    if w.get('days_left', 0) < 60:
+        risk_points += 1
+
+    if risk_points >= 4:
+        return '高'
+    if risk_points >= 2:
+        return '中'
+    return '低'
+
+
 def add_practical_fields(w):
     exit_level, exit_label, exit_penalty = calc_exit_difficulty(w)
     w['exit_difficulty'] = exit_level
@@ -301,42 +328,49 @@ def add_practical_fields(w):
     position = w.get('stock_position', '盤整不明')
     overheat = w.get('stock_overheat', False)
 
-    practical = score
-    practical += int(stock_score * 0.25)
-    practical += 10 if vol >= 500 else 7 if vol >= 200 else 3 if vol >= 50 else 0
-    practical += 8 if spd <= 2 else 5 if spd <= 3.5 else 2 if spd <= 5 else -10
-    practical += 8 if 60 <= dl <= 120 else 4 if 45 <= dl <= 180 else -10
+    practical_raw = score
+    practical_raw += int(stock_score * 0.25)
+    practical_raw += 10 if vol >= 500 else 7 if vol >= 200 else 3 if vol >= 50 else 0
+    practical_raw += 8 if spd <= 2 else 5 if spd <= 3.5 else 2 if spd <= 5 else -10
+    practical_raw += 8 if 60 <= dl <= 120 else 4 if 45 <= dl <= 180 else -10
     if wtype == 'call' and position == '低位轉強':
-        practical += 8
+        practical_raw += 8
     elif wtype == 'call' and position == '強勢續攻':
-        practical += 4
+        practical_raw += 4
     elif wtype == 'put' and position == '弱勢破底':
-        practical += 10
+        practical_raw += 10
     elif position == '盤整不明':
-        practical -= 6
+        practical_raw -= 6
     if overheat:
-        practical -= 18
+        practical_raw -= 18
     if exit_level == '高':
-        practical -= exit_penalty
+        practical_raw -= exit_penalty
     elif exit_level == '中':
-        practical -= exit_penalty
+        practical_raw -= exit_penalty
     if vol < 100:
-        practical -= 8
+        practical_raw -= 8
     if m is not None and m < -20:
-        practical -= 12
+        practical_raw -= 12
     if dl < 60:
-        practical -= 8
+        practical_raw -= 8
     if wtype == 'call' and not (3 <= lev <= 10) and lev:
-        practical -= 4
+        practical_raw -= 4
 
-    w['practical_score'] = max(0, min(150, int(round(practical))))
+    # 正規化成 0-100，保留原始分數只供內部除錯。
+    w['practical_raw_score'] = int(round(practical_raw))
+    w['practical_score'] = max(0, min(100, int(round(practical_raw / 150 * 100))))
+    w['risk_level'] = calc_risk_level(w)
 
     tags = []
-    if w['practical_score'] >= 95 and exit_level != '高' and not overheat:
+    if w['practical_score'] >= 75 and exit_level != '高' and not overheat:
         tags.append(('推薦觀察', 'good'))
     if overheat:
         tags.append(('短線過熱', 'bad'))
         tags.append(('避免追高', 'warn'))
+    pct5 = w.get('stock_pct5')
+    pct20 = w.get('stock_pct20')
+    if wtype == 'call' and ((pct5 is not None and pct5 >= 10) or (pct20 is not None and pct20 >= 18)):
+        tags.append(('僅適合短打', 'warn'))
     if position in ('低位轉強', '強勢續攻', '弱勢破底'):
         tags.append((position, 'good' if position != '弱勢破底' else 'info'))
     if exit_level == '低':
@@ -347,6 +381,12 @@ def add_practical_fields(w):
         tags.append(('價差過大', 'bad' if spd > 5 else 'warn'))
     if dl < 60:
         tags.append(('時間價值風險', 'warn'))
+    if (w.get('iv_hv') or 0) > 1.5:
+        tags.append(('IV 偏貴', 'warn'))
+    if m is not None and m < -20:
+        tags.append(('深度價外', 'warn'))
+    if vol < 100:
+        tags.append(('量能不足', 'warn'))
     w['practical_tags'] = tags
 
     if exit_level == '高':
@@ -365,8 +405,12 @@ def add_practical_fields(w):
         reminders.append('追高提醒：標的今日或短線漲幅過大，建議等回測再看')
     if exit_level == '高':
         reminders.append('出場提醒：成交量或價差不佳，不宜重押')
-    reminders.append('停損提醒：若標的跌破 5 日線或權證跌破買進價 15%–20%，應考慮停損')
-    reminders.append('停利提醒：若權證短線上漲 20%–30%，可考慮分批停利')
+    if wtype == 'put':
+        reminders.append('停損提醒：若標的重新站回 5 日線，或認售權證跌破買進價 15%–20%，應考慮停損。')
+        reminders.append('停利提醒：若標的續跌、認售權證短線上漲 20%–30%，可考慮分批停利。')
+    else:
+        reminders.append('停損提醒：若標的跌破 5 日線，或權證跌破買進價 15%–20%，應考慮停損。')
+        reminders.append('停利提醒：若權證短線上漲 20%–30%，可考慮分批停利。')
     reminders.append('時間價值提醒：若標的 2–3 天沒有續強，權證可能被時間價值侵蝕')
     w['operation_type'] = advice_type
     w['operation_reminders'] = reminders
@@ -388,11 +432,11 @@ def _build_copy_text(w):
         f"【{direction}】{w['code']} {w.get('name','')}",
         f"標的: {w.get('underlying','')} @ {w.get('stock_price',0):.2f}",
         f"現價: {w.get('close',0):.2f}  履約價: {strike_s}  剩餘: {w.get('days_left',0)}天",
-        f"評分: {w.get('score',0)}分  實戰優先: {w.get('practical_score',0)}分  完整度: {w.get('completeness_pct',0)}%",
+        f"總分: {w.get('score',0)}  實戰: {w.get('practical_score',0)}  風險: {w.get('risk_level','中')}  完整度: {w.get('completeness_pct',0)}%",
         f"IV: {iv_s}  槓桿: {lev_s}  價性: {m_s}",
         f"行使比例: {w.get('ratio',1):.2f}  量: {w.get('volume',0)}張  價差: {w.get('spread_pct',0):.1f}%",
         f"標的位置: {w.get('stock_position','—')}  5日: {_fmt_pct(w.get('stock_pct5'))}  20日: {_fmt_pct(w.get('stock_pct20'))}",
-        f"出場難度: {w.get('exit_difficulty','—')}（{w.get('exit_label','—')}）",
+        f"出場難度: {w.get('exit_difficulty','—')}｜{w.get('exit_label','—')}",
     ]
     if sel:   lines.append(f"入選: {sel}")
     if ded:   lines.append(f"注意: {ded}")
@@ -435,7 +479,7 @@ def _warrant_card(w, show_reasons=True):
     tags_html  = ''.join(_tag(t, k) for t, k in w.get('practical_tags', []))
     pos_html   = (
         '<div style="margin-top:5px;line-height:1.65">'
-        f'{_tag(pos, pos_kind)}{_tag("出場" + exit_level + "｜" + w.get("exit_label",""), exit_kind)}'
+        f'{_tag(pos, pos_kind)}{_tag("出場難度：" + exit_level + "｜" + w.get("exit_label",""), exit_kind)}'
         f'<span style="color:#777;font-size:11px;margin-left:2px">'
         f'5日 {_fmt_pct(w.get("stock_pct5"))}／20日 {_fmt_pct(w.get("stock_pct20"))}　'
         f'乖離5日 {_fmt_pct(w.get("stock_bias5"))}／20日 {_fmt_pct(w.get("stock_bias20"))}</span>'
@@ -494,7 +538,7 @@ def _warrant_card(w, show_reasons=True):
     </td>
     <td style="padding:10px 8px;text-align:center;white-space:nowrap">
       <div style="font-size:26px;font-weight:700;color:{sc_c}">{score}</div>
-      <div style="font-size:11px;color:#555;margin-top:-2px">實戰 {practical}</div>
+      <div style="font-size:11px;color:#555;margin-top:-2px">總分 {score}｜實戰 {practical}｜風險{w.get('risk_level','中')}</div>
       <div style="background:#eee;border-radius:3px;height:5px;margin:4px 0 6px">
         <div style="width:{score}%;background:{sc_c};height:5px;border-radius:3px"></div>
       </div>
@@ -613,6 +657,106 @@ def _stock_rows(stocks, indicators, top=20, names=None):
     return rows
 
 
+def _steady_call_score(w):
+    score = w.get('score', 0) * 0.35
+    score += w.get('practical_score', 0) * 0.25
+    dl = w.get('days_left', 0)
+    lev = w.get('leverage') or 0
+    vol = w.get('volume', 0)
+    spd = w.get('spread_pct', 99)
+    m = w.get('moneyness')
+    pos = w.get('stock_position')
+
+    score += 18 if 60 <= dl <= 120 else 8 if 45 <= dl <= 150 else -15
+    score += 16 if 3 <= lev <= 6 else 8 if 2.5 <= lev <= 8 else -8
+    score += 12 if vol >= 500 else 8 if vol >= 200 else 4 if vol >= 100 else -8
+    score += 12 if spd <= 2 else 8 if spd <= 3.5 else -12
+    score += 12 if m is not None and -12 <= m <= 8 else 4 if m is not None and m >= -18 else -10
+    score += 10 if pos == '低位轉強' else 6 if pos == '強勢續攻' else -6 if pos == '短線過熱' else 0
+    if w.get('stock_overheat'):
+        score -= 25
+    return score
+
+
+def _scalp_call_score(w):
+    score = w.get('stock_score', 0) * 0.35
+    score += w.get('practical_score', 0) * 0.20
+    chg = w.get('chg_pct') or _stock_ind_cache.get(w.get('underlying', ''), {}).get('chg_pct', 0) or 0
+    pct5 = w.get('stock_pct5') or 0
+    pct20 = w.get('stock_pct20') or 0
+    vol_ratio = _stock_ind_cache.get(w.get('underlying', ''), {}).get('vol_ratio', 1)
+    lev = w.get('leverage') or 0
+    vol = w.get('volume', 0)
+    spd = w.get('spread_pct', 99)
+    dl = w.get('days_left', 0)
+
+    score += 16 if chg >= 3 else 10 if chg >= 1.5 else 4 if chg > 0 else -8
+    score += 12 if vol_ratio >= 1.5 else 7 if vol_ratio >= 1.2 else 0
+    score += 12 if 5 <= lev <= 12 else 7 if 3 <= lev < 5 or 12 < lev <= 18 else -4
+    score += 10 if vol >= 500 else 7 if vol >= 200 else 3 if vol >= 100 else -10
+    score += 10 if spd <= 2.5 else 5 if spd <= 4 else -12
+    score += 6 if dl >= 60 else 2 if dl >= 45 else -15
+    if pct5 >= 10 or pct20 >= 18 or w.get('stock_overheat'):
+        score += 3
+    if w.get('exit_difficulty') == '高':
+        score -= 20
+    return score
+
+
+def _put_watch_score(w):
+    score = w.get('stock_score', 0) * 0.35
+    score += w.get('practical_score', 0) * 0.30
+    pos = w.get('stock_position')
+    vol = w.get('volume', 0)
+    spd = w.get('spread_pct', 99)
+    score += 16 if pos == '弱勢破底' else 4 if pos == '盤整不明' else -8
+    score += 10 if vol >= 300 else 6 if vol >= 100 else 2 if vol >= 50 else -10
+    score += 10 if spd <= 2.5 else 5 if spd <= 4 else -12
+    if w.get('exit_difficulty') == '高':
+        score -= 18
+    return score
+
+
+def _watch_reason(w, bucket):
+    parts = []
+    pos = w.get('stock_position')
+    if pos in ('低位轉強', '強勢續攻', '短線過熱', '弱勢破底'):
+        parts.append(pos)
+    if w.get('volume', 0) >= 200:
+        parts.append('成交量充足')
+    elif w.get('volume', 0) >= 50:
+        parts.append('成交量尚可')
+    if w.get('spread_pct', 99) <= 2.5:
+        parts.append('價差小')
+    elif w.get('spread_pct', 99) <= 4:
+        parts.append('價差可接受')
+    if 60 <= w.get('days_left', 0) <= 120:
+        parts.append('剩餘天數適中')
+    if bucket == '短打' and ((w.get('stock_pct5') or 0) >= 10 or (w.get('stock_pct20') or 0) >= 18 or w.get('stock_overheat')):
+        parts.append('僅適合短打觀察，不宜追高')
+    if bucket == '認售':
+        parts.append('認售條件尚可')
+        if w.get('exit_difficulty') != '低':
+            parts.append('需注意流動性')
+    if not parts:
+        parts.append('條件相對均衡')
+    return '入選原因：' + '、'.join(parts[:5]) + '。'
+
+
+def _unique_top(items, key_func, limit):
+    result = []
+    seen = set()
+    for w in sorted(items, key=key_func, reverse=True):
+        code = w.get('code')
+        if code in seen:
+            continue
+        seen.add(code)
+        result.append(w)
+        if len(result) >= limit:
+            break
+    return result
+
+
 def build_watchlists(formal_calls, formal_puts):
     steady_calls = [
         w for w in formal_calls
@@ -623,7 +767,11 @@ def build_watchlists(formal_calls, formal_puts):
         and (w.get('moneyness') is None or w.get('moneyness', 0) >= -15)
         and not w.get('stock_overheat')
         and w.get('exit_difficulty') != '高'
+        and w.get('stock_position') in ('低位轉強', '強勢續攻', '盤整不明')
     ]
+    steady_top = _unique_top(steady_calls, _steady_call_score, 5)
+    steady_codes = {w.get('code') for w in steady_top}
+
     scalp_calls = [
         w for w in formal_calls
         if w.get('stock_score', 0) >= 65
@@ -631,6 +779,7 @@ def build_watchlists(formal_calls, formal_puts):
         and w.get('spread_pct', 99) <= 4
         and w.get('days_left', 0) >= 45
         and w.get('exit_difficulty') != '高'
+        and w.get('code') not in steady_codes
     ]
     put_watch = [
         w for w in formal_puts
@@ -640,23 +789,23 @@ def build_watchlists(formal_calls, formal_puts):
         and w.get('stock_position') in ('弱勢破底', '盤整不明')
         and w.get('exit_difficulty') != '高'
     ]
-
-    key = lambda w: -w.get('practical_score', w.get('score', 0))
     return {
-        '穩健認購 Top 5': sorted(steady_calls, key=key)[:5],
-        '短打認購 Top 5': sorted(scalp_calls, key=key)[:5],
-        '認售觀察 Top 5': sorted(put_watch, key=key)[:5],
+        '穩健認購 Top 5': steady_top,
+        '短打認購 Top 5': _unique_top(scalp_calls, _scalp_call_score, 5),
+        '認售觀察 Top 5': _unique_top(put_watch, _put_watch_score, 5),
     }
 
 
-def _watch_row(w):
+def _watch_row(w, bucket):
     code = html_mod.escape(w.get('code', ''))
     udly = html_mod.escape(w.get('underlying', ''))
     uname = html_mod.escape(w.get('underlying_name', ''))
     pos = w.get('stock_position', '—')
     pos_kind = 'bad' if pos == '短線過熱' else 'info' if pos == '弱勢破底' else 'good' if pos in ('低位轉強', '強勢續攻') else 'neutral'
     chase = _tag('追高風險', 'bad') if w.get('stock_overheat') or (w.get('chg_pct') or 0) >= 7 else ''
-    tags = ''.join(_tag(t, k) for t, k in w.get('practical_tags', [])[:3])
+    tags = ''.join(_tag(t, k) for t, k in w.get('practical_tags', [])[:5])
+    reason = html_mod.escape(_watch_reason(w, bucket))
+    risk_kind = 'good' if w.get('risk_level') == '低' else 'warn' if w.get('risk_level') == '中' else 'bad'
     return f'''
     <tr style="border-bottom:1px solid #f2f2f2">
       <td style="padding:8px">
@@ -664,7 +813,9 @@ def _watch_row(w):
         <span style="font-size:11px;color:#777">{udly} {uname}</span>
       </td>
       <td style="padding:8px;text-align:center;font-weight:700;color:{_score_color(w.get('practical_score',0))}">
-        {w.get('practical_score',0)}<br><span style="font-size:11px;color:#999;font-weight:400">總分 {w.get('score',0)}</span>
+        實戰 {w.get('practical_score',0)}<br>
+        <span style="font-size:11px;color:#666;font-weight:400">總分 {w.get('score',0)}｜實戰 {w.get('practical_score',0)}｜風險{w.get('risk_level','中')}</span><br>
+        {_tag('風險' + w.get('risk_level','中'), risk_kind)}
       </td>
       <td style="padding:8px;font-size:12px">
         現價 {w.get('close',0):.2f}／量 {w.get('volume',0):,}<br>
@@ -674,6 +825,7 @@ def _watch_row(w):
         {_tag(pos, pos_kind)}{_tag(w.get('exit_label','—'), 'good' if w.get('exit_difficulty') == '低' else 'warn' if w.get('exit_difficulty') == '中' else 'bad')}{chase}<br>
         <span style="color:#777">5日 {_fmt_pct(w.get('stock_pct5'))}／20日 {_fmt_pct(w.get('stock_pct20'))}</span><br>
         {tags}
+        <div style="margin-top:4px;color:#555;line-height:1.45">{reason}</div>
       </td>
     </tr>'''
 
@@ -681,7 +833,8 @@ def _watch_row(w):
 def _watchlist_block(watchlists):
     blocks = []
     for title, items in watchlists.items():
-        rows = ''.join(_watch_row(w) for w in items)
+        bucket = '穩健' if title.startswith('穩健') else '短打' if title.startswith('短打') else '認售'
+        rows = ''.join(_watch_row(w, bucket) for w in items)
         if not rows:
             rows = '<tr><td colspan="4" style="padding:12px;color:#aaa">今日沒有符合這組實戰條件的權證</td></tr>'
         blocks.append(f'''
