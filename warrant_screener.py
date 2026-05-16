@@ -27,6 +27,7 @@ from warrant_scorer import (
     get_selection_reasons,
     get_deduction_reasons,
 )
+from stock_radar import build_stock_radar, render_stock_radar_html
 
 try:
     from warrant_config import ID_NUMBER, PASSWORD, CERT_PATH, CERT_PASS
@@ -1013,6 +1014,11 @@ def generate_html(strong_stocks, weak_stocks, stock_indicators,
     watch_html   = _watchlist_block(watchlists)
     risk_stats   = build_risk_stats(high_risk, insufficient)
     risk_stats_html = _risk_stats_block(risk_stats)
+    stock_radar = build_stock_radar(
+        strong_stocks, weak_stocks, stock_indicators,
+        formal_calls, formal_puts, names
+    )
+    stock_radar_html = render_stock_radar_html(stock_radar)
 
     strong_rows = _stock_rows(strong_stocks, stock_indicators, names=names)
     weak_rows   = _stock_rows(weak_stocks,   stock_indicators, names=names)
@@ -1154,7 +1160,10 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
-<!-- ── B. 今日最值得觀察 ── -->
+<!-- ── B. 台股個股雷達 ── -->
+{stock_radar_html}
+
+<!-- ── C. 今日最值得觀察 ── -->
 <div class="card">
   <div class="card-title">
     今日最值得觀察 Top 10
@@ -1164,7 +1173,7 @@ function copyWarrant(btn) {{
   {watch_html}
 </div>
 
-<!-- ── C. 強勢股 ── -->
+<!-- ── D. 強勢股 ── -->
 <div class="card">
   <div class="card-title">
     強勢標的股 Top {min(len(strong_stocks),20)}
@@ -1186,7 +1195,7 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
-<!-- ── D. 弱勢股 ── -->
+<!-- ── E. 弱勢股 ── -->
 <div class="card">
   <div class="card-title">
     弱勢標的股 Top {min(len(weak_stocks),20)}
@@ -1208,29 +1217,29 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
-<!-- ── E. 正式認購候選 ── -->
+<!-- ── F. 正式認購候選 ── -->
 <div class="card">
   <div class="card-title">
     正式認購候選（Call）
     <span class="badge" style="background:#27ae60">{len(formal_calls)} 支</span>
     <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:4px">
-      強勢股標的 · 通過資格審查 · 依實戰優先分數排序</span>
+      強勢股標的 · 通過資格審查 · 依實戰優先分數排序 · 僅供觀察，不構成投資建議</span>
   </div>
   {calls_html}
 </div>
 
-<!-- ── F. 正式認售候選 ── -->
+<!-- ── G. 正式認售候選 ── -->
 <div class="card">
   <div class="card-title">
     正式認售候選（Put）
     <span class="badge" style="background:#e74c3c">{len(formal_puts)} 支</span>
     <span style="font-size:11px;font-weight:normal;color:#aaa;margin-left:4px">
-      弱勢股標的 · 通過資格審查 · 依實戰優先分數排序</span>
+      弱勢股標的 · 通過資格審查 · 依實戰優先分數排序 · 僅供觀察，不構成投資建議</span>
   </div>
   {puts_html}
 </div>
 
-<!-- ── G. 高風險排除統計 ── -->
+<!-- ── H. 高風險排除統計 ── -->
 <div class="card">
   <div class="card-title">
     高風險排除原因統計
@@ -1249,7 +1258,7 @@ function copyWarrant(btn) {{
   </details>
 </div>
 
-<!-- ── H. 高風險排除清單 ── -->
+<!-- ── I. 高風險排除清單 ── -->
 <div class="card">
   <details>
     <summary style="font-size:15px;font-weight:700;padding:4px 0;color:#e74c3c">
@@ -1265,7 +1274,7 @@ function copyWarrant(btn) {{
 
 <!-- ── Footer ── -->
 <div style="text-align:center;color:#bbb;font-size:11px;margin-top:4px;padding-bottom:24px">
-  本報表僅供觀察參考，不構成投資建議 · 資料來源：TWSE / TPEX / Fubon Neo<br>
+  本系統僅供觀察與研究，不構成投資建議，不提供自動下單，也不保證獲利 · 資料來源：TWSE / TPEX / Fubon Neo<br>
   自動產生 · {now_str}
 </div>
 
