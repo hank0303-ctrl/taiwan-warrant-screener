@@ -1092,6 +1092,13 @@ body{{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
 .stat-box{{background:#f8f7f4;border-radius:10px;padding:14px;text-align:center}}
 .stat-val{{font-size:26px;font-weight:700}}
 .stat-lbl{{font-size:11px;color:#aaa;margin-top:3px}}
+.tabs{{display:flex;gap:8px;margin:0 0 14px;position:sticky;top:8px;z-index:5;
+      background:rgba(240,237,232,.92);backdrop-filter:blur(8px);padding:6px 0}}
+.tab-btn{{flex:1;border:1px solid #ddd;background:#fff;color:#555;border-radius:10px;
+         padding:10px 12px;font-size:14px;font-weight:700;cursor:pointer}}
+.tab-btn.active{{background:#16213e;color:#fff;border-color:#16213e}}
+.tab-panel{{display:none}}
+.tab-panel.active{{display:block}}
 details summary{{cursor:pointer;list-style:none;user-select:none}}
 details summary::-webkit-details-marker{{display:none}}
 details summary::before{{content:"▶ ";font-size:10px;color:#aaa}}
@@ -1117,6 +1124,17 @@ function copyWarrant(btn) {{
     btn.textContent='✅'; setTimeout(function(){{btn.textContent=orig;}},2000);
   }}
 }}
+function showTab(tab) {{
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {{
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  }});
+  document.querySelectorAll('.tab-panel').forEach(function(panel) {{
+    panel.classList.toggle('active', panel.id === 'tab-' + tab);
+  }});
+}}
+document.addEventListener('DOMContentLoaded', function() {{
+  showTab(location.hash === '#warrants' ? 'warrants' : 'stocks');
+}});
 </script>
 </head>
 <body>
@@ -1160,9 +1178,17 @@ function copyWarrant(btn) {{
   </div>
 </div>
 
+<div class="tabs">
+  <button class="tab-btn active" data-tab="stocks" onclick="showTab('stocks');location.hash='stocks'">股票雷達</button>
+  <button class="tab-btn" data-tab="warrants" onclick="showTab('warrants');location.hash='warrants'">權證篩選</button>
+</div>
+
+<div id="tab-stocks" class="tab-panel active">
 <!-- ── B. 台股個股雷達 ── -->
 {stock_radar_html}
+</div>
 
+<div id="tab-warrants" class="tab-panel">
 <!-- ── C. 今日最值得觀察 ── -->
 <div class="card">
   <div class="card-title">
@@ -1278,6 +1304,7 @@ function copyWarrant(btn) {{
   自動產生 · {now_str}
 </div>
 
+</div>
 </div>
 </body>
 </html>'''
