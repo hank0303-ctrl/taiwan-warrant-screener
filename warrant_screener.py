@@ -148,6 +148,7 @@ def run_screening():
         enriched['stock_pct20'] = s_ind.get('pct20')
         enriched['stock_bias5'] = s_ind.get('bias5')
         enriched['stock_bias20'] = s_ind.get('bias20')
+        enriched['chg_pct'] = s_ind.get('chg_pct', 0)
         enriched['stock_consecutive_long_red'] = s_ind.get('consecutive_long_red', 0)
         enriched['stock_near_limit_up'] = s_ind.get('near_limit_up', False)
         enriched['stock_overheat'] = s_ind.get('overheat', False)
@@ -285,6 +286,45 @@ def calc_exit_difficulty(w):
     return '高', '不易出場', 18
 
 
+RISK_TAG_LABELS = {
+    'IV 偏貴',
+    '深度價外',
+    '量能不足',
+    '價差過大',
+    '低槓桿',
+    '剩餘天數過短',
+    '追高風險',
+    '短線過熱',
+}
+
+
+def _tag_labels(w):
+    return {label for label, _kind in w.get('practical_tags', [])}
+
+
+def has_scalp_or_overheat_signal(w):
+    labels = _tag_labels(w)
+    return (
+        bool(labels & {'僅適合短打', '短線過熱', '避免追高', '追高風險'})
+        or (w.get('chg_pct') or 0) >= 7
+        or (w.get('stock_pct5') is not None and w.get('stock_pct5') > 10)
+        or (w.get('stock_pct20') is not None and w.get('stock_pct20') > 25)
+        or w.get('stock_consecutive_long_red', 0) >= 2
+    )
+
+
+def has_steady_exclusion_signal(w):
+    labels = _tag_labels(w)
+    return (
+        bool(labels & {'僅適合短打', '短線過熱', '避免追高', '追高風險'})
+        or (w.get('chg_pct') or 0) >= 7
+        or (w.get('stock_pct5') is not None and w.get('stock_pct5') > 10)
+        or (w.get('stock_pct20') is not None and w.get('stock_pct20') > 25)
+        or (w.get('stock_bias20') is not None and w.get('stock_bias20') > 12)
+        or w.get('stock_consecutive_long_red', 0) >= 2
+    )
+
+
 def calc_risk_level(w):
     exit_level = w.get('exit_difficulty', '中')
     risk_points = 0
@@ -293,6 +333,8 @@ def calc_risk_level(w):
     elif exit_level == '中':
         risk_points += 1
     if w.get('stock_overheat'):
+        risk_points += 2
+    if (w.get('chg_pct') or 0) >= 7:
         risk_points += 2
     if w.get('spread_pct', 0) > 3.5:
         risk_points += 1
@@ -304,6 +346,12 @@ def calc_risk_level(w):
         risk_points += 1
     if w.get('days_left', 0) < 60:
         risk_points += 1
+    labels = _tag_labels(w)
+    tag_risks = labels & RISK_TAG_LABELS
+    if tag_risks:
+        risk_points = max(risk_points, 2)
+    if len(tag_risks) >= 2:
+        risk_points = max(risk_points, 4)
 
     if risk_points >= 4:
         return '高'
@@ -359,14 +407,13 @@ def add_practical_fields(w):
     # 正規化成 0-100，保留原始分數只供內部除錯。
     w['practical_raw_score'] = int(round(practical_raw))
     w['practical_score'] = max(0, min(100, int(round(practical_raw / 150 * 100))))
-    w['risk_level'] = calc_risk_level(w)
 
     tags = []
-    if w['practical_score'] >= 75 and exit_level != '高' and not overheat:
-        tags.append(('推薦觀察', 'good'))
     if overheat:
         tags.append(('短線過熱', 'bad'))
         tags.append(('避免追高', 'warn'))
+    if (w.get('chg_pct') or 0) >= 7:
+        tags.append(('追高風險', 'bad'))
     pct5 = w.get('stock_pct5')
     pct20 = w.get('stock_pct20')
     if wtype == 'call' and ((pct5 is not None and pct5 >= 10) or (pct20 is not None and pct20 >= 18)):
@@ -381,18 +428,26 @@ def add_practical_fields(w):
         tags.append(('價差過大', 'bad' if spd > 5 else 'warn'))
     if dl < 60:
         tags.append(('時間價值風險', 'warn'))
+        tags.append(('剩餘天數過短', 'warn'))
     if (w.get('iv_hv') or 0) > 1.5:
         tags.append(('IV 偏貴', 'warn'))
     if m is not None and m < -20:
         tags.append(('深度價外', 'warn'))
+    if lev and lev < 2:
+        tags.append(('低槓桿', 'warn'))
     if vol < 100:
         tags.append(('量能不足', 'warn'))
     w['practical_tags'] = tags
+    w['risk_level'] = calc_risk_level(w)
+    if w['practical_score'] >= 75 and exit_level != '高' and not overheat and w['risk_level'] == '低':
+        w['practical_tags'].insert(0, ('推薦觀察', 'good'))
 
-    if exit_level == '高':
+    if w['risk_level'] == '高' or exit_level == '高':
         advice_type = '高風險觀察'
-    elif overheat:
+    elif overheat or '短線過熱' in _tag_labels(w) or '避免追高' in _tag_labels(w):
         advice_type = '不建議追價'
+    elif wtype == 'call' and has_scalp_or_overheat_signal(w):
+        advice_type = '短打觀察'
     elif wtype == 'call' and 60 <= dl <= 120 and exit_level == '低':
         advice_type = '穩健觀察'
     elif wtype == 'call':
@@ -673,14 +728,51 @@ def _steady_call_score(w):
     score += 12 if spd <= 2 else 8 if spd <= 3.5 else -12
     score += 12 if m is not None and -12 <= m <= 8 else 4 if m is not None and m >= -18 else -10
     score += 10 if pos == '低位轉強' else 6 if pos == '強勢續攻' else -6 if pos == '短線過熱' else 0
+    pct5 = w.get('stock_pct5') or 0
+    pct20 = w.get('stock_pct20') or 0
+    bias20 = w.get('stock_bias20') or 0
+    if pos == '強勢續攻' and (pct5 <= 8 and pct20 <= 18 and bias20 <= 10):
+        score += 5
     if w.get('stock_overheat'):
         score -= 25
     return score
 
 
+def calc_scalp_momentum_score(w):
+    chg = w.get('chg_pct') or _stock_ind_cache.get(w.get('underlying', ''), {}).get('chg_pct', 0) or 0
+    vol_ratio = _stock_ind_cache.get(w.get('underlying', ''), {}).get('vol_ratio', 1)
+    pct5 = w.get('stock_pct5') or 0
+    stock_score = w.get('stock_score', 0)
+    vol = w.get('volume', 0)
+    spd = w.get('spread_pct', 99)
+    dl = w.get('days_left', 0)
+    m = w.get('moneyness')
+    momentum = 0
+
+    momentum += 18 if chg >= 4 else 14 if chg >= 2.5 else 9 if chg >= 1 else 3 if chg > 0 else -8
+    momentum += 14 if vol_ratio >= 1.8 else 10 if vol_ratio >= 1.3 else 5 if vol_ratio >= 1.0 else 0
+    momentum += 12 if 3 <= pct5 <= 10 else 8 if 0 < pct5 < 3 else 4 if 10 < pct5 <= 15 else -6 if pct5 > 15 else 0
+    momentum += int(stock_score / 100 * 14)
+    momentum += 12 if vol >= 500 else 8 if vol >= 200 else 4 if vol >= 100 else -8
+    momentum += 10 if spd <= 2.5 else 6 if spd <= 4 else -12
+    momentum += 8 if 60 <= dl <= 150 else 4 if 45 <= dl < 60 else -12
+
+    if w.get('stock_overheat') or pct5 > 12 or (w.get('stock_pct20') or 0) > 25:
+        momentum -= 10
+    if m is not None and m < -20:
+        momentum -= 10
+    if spd > 4:
+        momentum -= 12
+
+    return max(0, min(100, int(round(momentum))))
+
+
 def _scalp_call_score(w):
-    score = w.get('stock_score', 0) * 0.35
-    score += w.get('practical_score', 0) * 0.20
+    momentum = calc_scalp_momentum_score(w)
+    w['scalp_momentum_score'] = momentum
+    score = momentum * 0.55
+    score += w.get('stock_score', 0) * 0.20
+    score += w.get('practical_score', 0) * 0.15
     chg = w.get('chg_pct') or _stock_ind_cache.get(w.get('underlying', ''), {}).get('chg_pct', 0) or 0
     pct5 = w.get('stock_pct5') or 0
     pct20 = w.get('stock_pct20') or 0
@@ -722,6 +814,13 @@ def _watch_reason(w, bucket):
     pos = w.get('stock_position')
     if pos in ('低位轉強', '強勢續攻', '短線過熱', '弱勢破底'):
         parts.append(pos)
+    chg = w.get('chg_pct') or _stock_ind_cache.get(w.get('underlying', ''), {}).get('chg_pct', 0) or 0
+    vol_ratio = _stock_ind_cache.get(w.get('underlying', ''), {}).get('vol_ratio', 1)
+    if bucket == '短打':
+        if chg >= 1.5 and vol_ratio >= 1.2:
+            parts.append('今日量價轉強')
+        elif chg > 0:
+            parts.append('短線動能轉強')
     if w.get('volume', 0) >= 200:
         parts.append('成交量充足')
     elif w.get('volume', 0) >= 50:
@@ -732,8 +831,11 @@ def _watch_reason(w, bucket):
         parts.append('價差可接受')
     if 60 <= w.get('days_left', 0) <= 120:
         parts.append('剩餘天數適中')
-    if bucket == '短打' and ((w.get('stock_pct5') or 0) >= 10 or (w.get('stock_pct20') or 0) >= 18 or w.get('stock_overheat')):
-        parts.append('僅適合短打觀察，不宜追高')
+    if bucket == '短打':
+        if ((w.get('stock_pct5') or 0) >= 10 or (w.get('stock_pct20') or 0) >= 18 or w.get('stock_overheat')):
+            parts.append('僅適合短打觀察，不宜追高')
+        elif pos == '強勢續攻':
+            parts.append('適合盤中觀察，不宜追高')
     if bucket == '認售':
         parts.append('認售條件尚可')
         if w.get('exit_difficulty') != '低':
@@ -763,11 +865,12 @@ def build_watchlists(formal_calls, formal_puts):
         if 60 <= w.get('days_left', 0) <= 120
         and w.get('volume', 0) >= 100
         and w.get('spread_pct', 99) <= 3.5
-        and (w.get('leverage') is None or 3 <= w.get('leverage', 0) <= 8)
+        and (w.get('leverage') is None or 3 <= w.get('leverage', 0) <= 6)
         and (w.get('moneyness') is None or w.get('moneyness', 0) >= -15)
         and not w.get('stock_overheat')
         and w.get('exit_difficulty') != '高'
         and w.get('stock_position') in ('低位轉強', '強勢續攻', '盤整不明')
+        and not has_steady_exclusion_signal(w)
     ]
     steady_top = _unique_top(steady_calls, _steady_call_score, 5)
     steady_codes = {w.get('code') for w in steady_top}
@@ -806,6 +909,9 @@ def _watch_row(w, bucket):
     tags = ''.join(_tag(t, k) for t, k in w.get('practical_tags', [])[:5])
     reason = html_mod.escape(_watch_reason(w, bucket))
     risk_kind = 'good' if w.get('risk_level') == '低' else 'warn' if w.get('risk_level') == '中' else 'bad'
+    momentum_html = ''
+    if bucket == '短打':
+        momentum_html = f'<br><span style="font-size:11px;color:#777">短線動能 {w.get("scalp_momentum_score", calc_scalp_momentum_score(w))}</span>'
     return f'''
     <tr style="border-bottom:1px solid #f2f2f2">
       <td style="padding:8px">
@@ -815,7 +921,7 @@ def _watch_row(w, bucket):
       <td style="padding:8px;text-align:center;font-weight:700;color:{_score_color(w.get('practical_score',0))}">
         實戰 {w.get('practical_score',0)}<br>
         <span style="font-size:11px;color:#666;font-weight:400">總分 {w.get('score',0)}｜實戰 {w.get('practical_score',0)}｜風險{w.get('risk_level','中')}</span><br>
-        {_tag('風險' + w.get('risk_level','中'), risk_kind)}
+        {_tag('風險' + w.get('risk_level','中'), risk_kind)}{momentum_html}
       </td>
       <td style="padding:8px;font-size:12px">
         現價 {w.get('close',0):.2f}／量 {w.get('volume',0):,}<br>
