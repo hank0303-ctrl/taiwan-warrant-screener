@@ -467,18 +467,38 @@
       localStorage.setItem(LOCAL_KEY, JSON.stringify(items));
     }
 
+    function loadJsonp(url) {
+      return new Promise((resolve, reject) => {
+        const cb = `jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const script = document.createElement('script');
+        window[cb] = (data) => {
+          resolve(data);
+          delete window[cb];
+          script.remove();
+        };
+        script.onerror = () => {
+          reject(new Error('資料送出失敗'));
+          delete window[cb];
+          script.remove();
+        };
+        script.src = `${url}${url.includes('?') ? '&' : '?'}callback=${cb}`;
+        document.body.appendChild(script);
+      });
+    }
+
     async function submitPayload(payload) {
       if (!GAS_URL) {
         saveLocal(payload);
         return;
       }
 
-      await fetch(GAS_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
+      const url = new URL(GAS_URL);
+      url.searchParams.set('action', 'submit');
+      url.searchParams.set('payload', JSON.stringify(payload));
+      const result = await loadJsonp(url.toString());
+      if (!result || result.status !== 'success') {
+        throw new Error(result?.message || '資料送出失敗');
+      }
     }
 
     form.addEventListener('change', updateVisibility);
@@ -522,6 +542,7 @@
         successBox.classList.add('show');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (err) {
+        errorMsg.textContent = err.message || '送出失敗，請稍後再試，或直接聯繫教室負責人。';
         errorMsg.classList.add('show');
       } finally {
         submitBtn.disabled = false;

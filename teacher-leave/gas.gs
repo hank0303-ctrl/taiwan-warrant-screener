@@ -39,6 +39,12 @@ function doGet(e) {
     const sheet = getSheet_();
     const action = (e.parameter.action || 'list').toLowerCase();
 
+    if (action === 'submit') {
+      const data = JSON.parse(e.parameter.payload || '{}');
+      appendSubmission_(sheet, data);
+      return json_(e, { status: 'success' });
+    }
+
     if (action === 'update') {
       const row = Number(e.parameter.row);
       const status = e.parameter.admin_status || '';
@@ -71,24 +77,7 @@ function doPost(e) {
       return json_(null, { status: 'success' });
     }
 
-    sheet.appendRow([
-      data.submitted_at || new Date(),
-      data.teacher_name || '',
-      data.leave_type || '',
-      data.leave_date || '',
-      data.affected_class || '',
-      data.affected_period || '',
-      data.substitute_status || '',
-      data.substitute_teacher || '',
-      data.reschedule_status || '',
-      data.reschedule_date || '',
-      data.reschedule_time || '',
-      data.leave_reason || '',
-      data.note || '',
-      data.admin_status || '待確認'
-    ]);
-
-    sendLeaveNotification_(data);
+    appendSubmission_(sheet, data);
 
     return json_(null, { status: 'success' });
   } catch (err) {
@@ -111,6 +100,27 @@ function getSheet_() {
   }
 
   return sheet;
+}
+
+function appendSubmission_(sheet, data) {
+  sheet.appendRow([
+    data.submitted_at || new Date(),
+    data.teacher_name || '',
+    data.leave_type || '',
+    data.leave_date || '',
+    data.affected_class || '',
+    data.affected_period || '',
+    data.substitute_status || '',
+    data.substitute_teacher || '',
+    data.reschedule_status || '',
+    data.reschedule_date || '',
+    data.reschedule_time || '',
+    data.leave_reason || '',
+    data.note || '',
+    data.admin_status || '待確認'
+  ]);
+
+  sendLeaveNotification_(data);
 }
 
 function updateAdminStatus_(sheet, row, status) {
