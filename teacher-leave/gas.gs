@@ -14,6 +14,8 @@
 
 const SPREADSHEET_ID = '請貼上你的試算表_ID';
 const SHEET_NAME = '老師請假申請';
+// 留空時會寄到部署 Apps Script 的帳號；也可以改成指定信箱，例如：'hank@example.com'
+const NOTIFY_EMAIL = '';
 
 const HEADERS = [
   'submitted_at',
@@ -86,6 +88,8 @@ function doPost(e) {
       data.admin_status || '待確認'
     ]);
 
+    sendLeaveNotification_(data);
+
     return json_(null, { status: 'success' });
   } catch (err) {
     return json_(null, { status: 'error', message: err.message });
@@ -115,6 +119,46 @@ function updateAdminStatus_(sheet, row, status) {
   sheet.getRange(row, HEADERS.indexOf('admin_status') + 1).setValue(status);
 }
 
+function sendLeaveNotification_(data) {
+  try {
+    const recipient = NOTIFY_EMAIL || Session.getEffectiveUser().getEmail();
+    if (!recipient) return;
+
+    const leaveDates = data.affected_period || data.leave_date || '未填';
+    const subject = '【武樂】老師請假申請通知 - ' + (data.teacher_name || '未填姓名');
+    const body = [
+      '有一筆新的老師請假申請：',
+      '',
+      '送出時間：' + formatDateTime_(data.submitted_at || new Date()),
+      '老師姓名：' + (data.teacher_name || '未填'),
+      '請假類型：' + (data.leave_type || '未填'),
+      '請假日期：' + leaveDates,
+      '請假課程：' + (data.affected_class || '未填'),
+      '代課狀態：' + (data.substitute_status || '未填'),
+      '代課老師：' + (data.substitute_teacher || '未填'),
+      '請假原因：' + (data.leave_reason || '未填'),
+      '其他備註：' + (data.note || '無'),
+      '',
+      '後台處理狀態：' + (data.admin_status || '待確認')
+    ].join('\n');
+
+    MailApp.sendEmail({
+      to: recipient,
+      subject: subject,
+      body: body,
+      name: '武樂老師請假表'
+    });
+  } catch (err) {
+    console.log('通知信寄送失敗：' + err.message);
+  }
+}
+
+function formatDateTime_(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (isNaN(date.getTime())) return value;
+  return Utilities.formatDate(date, 'Asia/Taipei', 'yyyy/MM/dd HH:mm:ss');
+}
+
 function json_(e, payload) {
   const output = JSON.stringify(payload);
   const callback = e && e.parameter && e.parameter.callback;
@@ -128,4 +172,3 @@ function json_(e, payload) {
     .createTextOutput(output)
     .setMimeType(ContentService.MimeType.JSON);
 }
-
