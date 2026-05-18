@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>老師請假後台｜武樂運動空間</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background: #f7f4ef;
+      color: #2d2925;
+    }
+    header {
+      background: #1f1b18;
+      color: #fff;
+      padding: 24px 20px;
+    }
+    .header-inner {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 24px; }
+    .hint { margin: 6px 0 0; color: #ffd7af; font-size: 14px; }
+    main {
+      width: min(1180px, calc(100% - 28px));
+      margin: 18px auto 48px;
+    }
+    .toolbar, .table-wrap, .detail {
+      background: #fff;
+      border: 1px solid #e7d9ca;
+      border-radius: 8px;
+      box-shadow: 0 10px 28px rgba(54, 36, 20, .07);
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    .filters { display: flex; gap: 10px; flex-wrap: wrap; }
+    input, select, button {
+      font: inherit;
+      border-radius: 8px;
+    }
+    input, select {
+      border: 1px solid #d8c7b7;
+      padding: 10px 12px;
+      background: #fffdfa;
+    }
+    button {
+      border: 0;
+      padding: 10px 14px;
+      background: #d96b2a;
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #efe4d8;
+      color: #5d4938;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+    th, td {
+      padding: 13px 12px;
+      border-bottom: 1px solid #eee2d7;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      background: #fff5eb;
+      color: #6d3d17;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+    tr { cursor: pointer; }
+    tr:hover td { background: #fffaf5; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .tag.red { background: #ffe8e6; color: #b3261e; }
+    .tag.yellow { background: #fff3c4; color: #7a5200; }
+    .tag.green { background: #e6f5e9; color: #1f7a3a; }
+    .tag.gray { background: #eeeae5; color: #665b51; }
+    .detail {
+      display: none;
+      margin-top: 14px;
+      padding: 18px;
+    }
+    .detail.show { display: block; }
+    .detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .detail h2 { margin: 0 0 5px; font-size: 20px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .item {
+      border: 1px solid #eee2d7;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fffdfa;
+    }
+    .label {
+      display: block;
+      color: #86776a;
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+    .value {
+      color: #2d2925;
+      white-space: pre-wrap;
+      line-height: 1.55;
+      font-weight: 700;
+    }
+    .empty {
+      padding: 34px 18px;
+      text-align: center;
+      color: #806f61;
+    }
+    @media (max-width: 720px) {
+      .filters { width: 100%; }
+      .filters input, .filters select { flex: 1 1 100%; }
+      .toolbar button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>老師請假後台</h1>
+        <p class="hint">優先看日期、老師、課程、代課與處理狀態</p>
+      </div>
+      <button type="button" onclick="loadItems()">重新整理</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="toolbar">
+      <div class="filters">
+        <input id="keyword" type="search" placeholder="搜尋老師、課程、原因">
+        <select id="statusFilter">
+          <option value="">全部處理狀態</option>
+          <option>待確認</option>
+          <option>已確認代課</option>
+          <option>已安排補課</option>
+          <option>已通知學生</option>
+          <option>已取消課程</option>
+          <option>已完成</option>
+        </select>
+        <select id="tagFilter">
+          <option value="">全部標籤</option>
+          <option value="red">需要立即處理</option>
+          <option value="yellow">待確認</option>
+          <option value="green">已完成</option>
+        </select>
+      </div>
+      <button class="secondary" type="button" onclick="exportCsv()">匯出 CSV</button>
+    </section>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>標籤</th>
+            <th>請假日期</th>
+            <th>老師</th>
+            <th>請假類型</th>
+            <th>受影響課程</th>
+            <th>代課狀態</th>
+            <th>調課狀態</th>
+            <th>處理狀態</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div id="empty" class="empty">目前沒有資料</div>
+    </section>
+
+    <section id="detail" class="detail"></section>
+  </main>
+
+  <script>
+    const GAS_URL = '';
+    const LOCAL_KEY = 'wule_teacher_leave_requests';
+    const ADMIN_STATUSES = ['待確認', '已確認代課', '已安排補課', '已通知學生', '已取消課程', '已完成'];
+    let allItems = [];
+    let selectedRow = null;
+
+    function todayIso(offset = 0) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + offset);
+      return d.toISOString().slice(0, 10);
+    }
+
+    function getTag(item) {
+      const leaveDate = String(item.leave_date || '').slice(0, 10);
+      const urgent =
+        item.substitute_status === '尚未找到，需要教室協助' ||
+        item.substitute_status === '課程建議停課' ||
+        leaveDate === todayIso(0) ||
+        leaveDate === todayIso(1) ||
+        item.admin_status === '待確認';
+
+      if (
+        item.admin_status === '已完成' &&
+        ['已確認代課', '已安排補課', '已取消課程', '已通知學生', '已完成'].includes(item.admin_status)
+      ) return { level: 'green', text: '已完成' };
+
+      const waiting =
+        (item.substitute_status === '已找到代課老師' && item.admin_status === '待確認') ||
+        (item.reschedule_status === '需要改期補課' && (!item.reschedule_date || !item.reschedule_time)) ||
+        item.substitute_status === '不確定，需與教室討論' ||
+        item.reschedule_status === '需與教室討論';
+
+      if (urgent) return { level: 'red', text: '需要立即處理' };
+      if (waiting) return { level: 'yellow', text: '待確認' };
+      return { level: 'gray', text: '一般' };
+    }
+
+    function normalizeItems(items) {
+      return items.map(item => ({ admin_status: '待確認', ...item }));
+    }
+
+    function loadJsonp(url) {
+      return new Promise((resolve, reject) => {
+        const cb = `jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const script = document.createElement('script');
+        window[cb] = (data) => {
+          resolve(data);
+          delete window[cb];
+          script.remove();
+        };
+        script.onerror = () => {
+          reject(new Error('資料讀取失敗'));
+          delete window[cb];
+          script.remove();
+        };
+        script.src = `${url}${url.includes('?') ? '&' : '?'}callback=${cb}`;
+        document.body.appendChild(script);
+      });
+    }
+
+    async function loadItems() {
+      if (GAS_URL) {
+        const result = await loadJsonp(GAS_URL);
+        allItems = normalizeItems(result.items || []);
+      } else {
+        allItems = normalizeItems(JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]'));
+      }
+      render();
+    }
+
+    function filteredItems() {
+      const keyword = document.getElementById('keyword').value.trim().toLowerCase();
+      const status = document.getElementById('statusFilter').value;
+      const tag = document.getElementById('tagFilter').value;
+
+      return allItems.filter(item => {
+        const haystack = [
+          item.teacher_name,
+          item.affected_class,
+          item.leave_reason,
+          item.note,
+          item.substitute_teacher
+        ].join(' ').toLowerCase();
+        const itemTag = getTag(item).level;
+        return (!keyword || haystack.includes(keyword)) &&
+          (!status || item.admin_status === status) &&
+          (!tag || itemTag === tag);
+      });
+    }
+
+    function render() {
+      const tbody = document.getElementById('tbody');
+      const empty = document.getElementById('empty');
+      const items = filteredItems();
+
+      tbody.innerHTML = items.map(item => {
+        const tag = getTag(item);
+        return `
+          <tr onclick="showDetail('${item.row}')">
+            <td><span class="tag ${tag.level}">${tag.text}</span></td>
+            <td>${escapeHtml(item.leave_date)}</td>
+            <td>${escapeHtml(item.teacher_name)}</td>
+            <td>${escapeHtml(item.leave_type)}</td>
+            <td>${escapeHtml(item.affected_class)}</td>
+            <td>${escapeHtml(item.substitute_status)}</td>
+            <td>${escapeHtml(item.reschedule_status)}</td>
+            <td>${escapeHtml(item.admin_status)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      empty.style.display = items.length ? 'none' : 'block';
+    }
+
+    function showDetail(row) {
+      selectedRow = row;
+      const item = allItems.find(entry => String(entry.row) === String(row));
+      if (!item) return;
+
+      const tag = getTag(item);
+      const fields = [
+        ['送出時間', formatDateTime(item.submitted_at)],
+        ['老師姓名', item.teacher_name],
+        ['請假類型', item.leave_type],
+        ['請假日期', item.leave_date],
+        ['受影響課程名稱', item.affected_class],
+        ['多堂課影響時段', item.affected_period],
+        ['代課狀態', item.substitute_status],
+        ['代課老師姓名', item.substitute_teacher],
+        ['是否需要調課', item.reschedule_status],
+        ['建議補課日期', item.reschedule_date],
+        ['建議補課時間', item.reschedule_time],
+        ['請假原因', item.leave_reason],
+        ['其他備註', item.note]
+      ];
+
+      document.getElementById('detail').innerHTML = `
+        <div class="detail-head">
+          <div>
+            <h2>${escapeHtml(item.leave_date)}｜${escapeHtml(item.teacher_name)}</h2>
+            <span class="tag ${tag.level}">${tag.text}</span>
+          </div>
+          <div>
+            <select id="adminStatusSelect">
+              ${ADMIN_STATUSES.map(status => `<option ${status === item.admin_status ? 'selected' : ''}>${status}</option>`).join('')}
+            </select>
+            <button type="button" onclick="updateStatus()">更新狀態</button>
+          </div>
+        </div>
+        <div class="grid">
+          ${fields.map(([label, value]) => `
+            <div class="item">
+              <span class="label">${label}</span>
+              <div class="value">${escapeHtml(value || '未填')}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      document.getElementById('detail').classList.add('show');
+      document.getElementById('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function updateStatus() {
+      const status = document.getElementById('adminStatusSelect').value;
+      const item = allItems.find(entry => String(entry.row) === String(selectedRow));
+      if (!item) return;
+
+      item.admin_status = status;
+
+      if (GAS_URL) {
+        const url = new URL(GAS_URL);
+        url.searchParams.set('action', 'update');
+        url.searchParams.set('row', item.row);
+        url.searchParams.set('admin_status', status);
+        await loadJsonp(url.toString());
+      } else {
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(allItems));
+      }
+
+      render();
+      showDetail(selectedRow);
+    }
+
+    function exportCsv() {
+      const headers = [
+        'submitted_at','teacher_name','leave_type','leave_date','affected_class','affected_period',
+        'substitute_status','substitute_teacher','reschedule_status','reschedule_date','reschedule_time',
+        'leave_reason','note','admin_status'
+      ];
+      const rows = filteredItems().map(item => headers.map(key => csvCell(item[key])).join(','));
+      const csv = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `武樂老師請假申請_${todayIso()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function csvCell(value) {
+      return `"${String(value || '').replace(/"/g, '""')}"`;
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString('zh-TW', { hour12: false });
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      }[char]));
+    }
+
+    document.getElementById('keyword').addEventListener('input', render);
+    document.getElementById('statusFilter').addEventListener('change', render);
+    document.getElementById('tagFilter').addEventListener('change', render);
+    loadItems();
+  </script>
+</body>
+</html>
+

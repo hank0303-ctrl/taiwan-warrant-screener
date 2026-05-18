@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>武樂運動空間｜老師請假申請表</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background: #fff8f1;
+      color: #2f2b27;
+      min-height: 100vh;
+    }
+    .topbar {
+      background: #1f1b18;
+      color: #fff;
+      padding: 30px 18px 28px;
+      text-align: center;
+    }
+    .brand { font-size: 14px; opacity: .82; margin-bottom: 8px; }
+    h1 { margin: 0; font-size: clamp(24px, 6vw, 34px); letter-spacing: .02em; }
+    .subtitle { margin: 10px 0 0; color: #ffd7af; font-size: 15px; }
+    main {
+      width: min(760px, calc(100% - 28px));
+      margin: 18px auto 56px;
+    }
+    .notice, .card, .success {
+      background: #fff;
+      border: 1px solid #f0dfcf;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(75, 45, 20, .08);
+    }
+    .notice {
+      padding: 22px;
+      border-left: 5px solid #d96b2a;
+      line-height: 1.8;
+      color: #594f46;
+      margin-bottom: 14px;
+    }
+    .quick-note {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed #ead8c4;
+      color: #7b4a20;
+      font-weight: 700;
+    }
+    form { display: grid; gap: 14px; }
+    .card { padding: 20px; }
+    .field { margin: 0 0 18px; }
+    .field:last-child { margin-bottom: 0; }
+    label.title {
+      display: block;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #2f2b27;
+    }
+    .req { color: #d96b2a; margin-left: 3px; }
+    .help {
+      margin: 0 0 10px;
+      color: #7a6f65;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    input[type="text"], input[type="date"], textarea, select {
+      width: 100%;
+      border: 1px solid #ddc9b8;
+      border-radius: 8px;
+      padding: 13px 14px;
+      font: inherit;
+      color: #2f2b27;
+      background: #fffdfa;
+      outline: none;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    input:focus, textarea:focus, select:focus {
+      border-color: #d96b2a;
+      box-shadow: 0 0 0 3px rgba(217, 107, 42, .14);
+    }
+    .options {
+      display: grid;
+      gap: 9px;
+    }
+    .option {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 12px 13px;
+      border: 1px solid #ead8c4;
+      border-radius: 8px;
+      background: #fffdfa;
+      cursor: pointer;
+      line-height: 1.45;
+    }
+    .option:has(input:checked) {
+      border-color: #d96b2a;
+      background: #fff2e6;
+      font-weight: 700;
+    }
+    .option input { accent-color: #d96b2a; width: 18px; height: 18px; flex: 0 0 auto; }
+    .hidden { display: none !important; }
+    .actions { display: grid; gap: 10px; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 15px 18px;
+      background: #d96b2a;
+      color: #fff;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .62; cursor: wait; }
+    .error {
+      display: none;
+      padding: 13px 14px;
+      border-radius: 8px;
+      background: #fff0f0;
+      color: #b3261e;
+      border: 1px solid #ffcaca;
+      line-height: 1.5;
+    }
+    .error.show { display: block; }
+    .success {
+      display: none;
+      padding: 34px 24px;
+      text-align: center;
+      line-height: 1.8;
+    }
+    .success.show { display: block; }
+    .success h2 { color: #d96b2a; margin: 0 0 10px; }
+    .announce {
+      margin-top: 16px;
+      padding: 16px;
+      background: #fff;
+      border: 1px solid #f0dfcf;
+      border-radius: 8px;
+      color: #594f46;
+      line-height: 1.8;
+      font-size: 14px;
+    }
+    @media (min-width: 680px) {
+      .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">武樂運動空間</div>
+    <h1>老師請假申請表</h1>
+    <p class="subtitle">請假、調課、代課協助統一填寫</p>
+  </header>
+
+  <main>
+    <section class="notice">
+      <p>老師們好😊<br>之後若有請假、調課或需要代課協助，請統一填寫這份表單，方便教室安排課程與通知學生。</p>
+      <p>如果是單堂課請假，只需要填寫「日期」與「課程名稱」即可。<br>如果當天有多堂課受到影響，再選擇影響時段。</p>
+      <p>若為臨時狀況，填完表單後也請同步私訊教室負責人，避免影響當天課程安排，謝謝配合🙏</p>
+      <div class="quick-note">核心資訊：老師姓名＋日期＋課程名稱＋有沒有代課＋要不要教室協助</div>
+    </section>
+
+    <section id="successBox" class="success">
+      <h2>已收到您的請假申請😊</h2>
+      <p>教室會再確認代課、補課或停課安排。</p>
+      <p>如果是臨時請假，請務必同步私訊教室負責人，避免影響課程安排，謝謝老師配合。</p>
+    </section>
+
+    <form id="leaveForm">
+      <section class="card">
+        <div class="two-col">
+          <div class="field">
+            <label class="title" for="teacher_name">老師姓名<span class="req">*</span></label>
+            <input id="teacher_name" name="teacher_name" type="text" placeholder="請填寫老師姓名" required>
+          </div>
+
+          <div class="field">
+            <label class="title" for="leave_date">請假日期<span class="req">*</span></label>
+            <p class="help">請選擇需要請假的日期。</p>
+            <input id="leave_date" name="leave_date" type="date" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="title">請假類型<span class="req">*</span></label>
+          <div class="options" data-radio-group="leave_type">
+            <label class="option"><input type="radio" name="leave_type" value="單堂課請假" required checked><span>單堂課請假</span></label>
+            <label class="option"><input type="radio" name="leave_type" value="多堂課請假"><span>多堂課請假</span></label>
+            <label class="option"><input type="radio" name="leave_type" value="整天請假"><span>整天請假</span></label>
+            <label class="option"><input type="radio" name="leave_type" value="其他"><span>其他</span></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="title" for="affected_class">受影響課程名稱<span class="req">*</span></label>
+          <p class="help">如果是單堂課，請直接填課程名稱即可。如果是多堂課，請把會影響的課程都列出來。</p>
+          <textarea id="affected_class" name="affected_class" placeholder="例如：基礎空瑜&#10;或：兒童拳擊、拳擊基礎、燃脂階梯有氧" required></textarea>
+        </div>
+      </section>
+
+      <section id="periodCard" class="card hidden">
+        <div class="field">
+          <label class="title">多堂課影響時段<span class="req">*</span></label>
+          <div class="options">
+            <label class="option"><input type="radio" name="affected_period" value="上午"><span>上午</span></label>
+            <label class="option"><input type="radio" name="affected_period" value="下午"><span>下午</span></label>
+            <label class="option"><input type="radio" name="affected_period" value="晚上"><span>晚上</span></label>
+            <label class="option"><input type="radio" name="affected_period" value="全天"><span>全天</span></label>
+            <label class="option"><input type="radio" name="affected_period" value="其他"><span>其他</span></label>
+          </div>
+        </div>
+        <div id="periodOtherWrap" class="field hidden">
+          <label class="title" for="affected_period_other">其他時段補充</label>
+          <input id="affected_period_other" name="affected_period_other" type="text" placeholder="請補充影響時段">
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="field">
+          <label class="title">是否已經有代課老師？<span class="req">*</span></label>
+          <div class="options">
+            <label class="option"><input type="radio" name="substitute_status" value="已找到代課老師" required><span>已找到代課老師</span></label>
+            <label class="option"><input type="radio" name="substitute_status" value="尚未找到，需要教室協助"><span>尚未找到，需要教室協助</span></label>
+            <label class="option"><input type="radio" name="substitute_status" value="不確定，需與教室討論"><span>不確定，需與教室討論</span></label>
+            <label class="option"><input type="radio" name="substitute_status" value="課程建議停課"><span>課程建議停課</span></label>
+          </div>
+        </div>
+
+        <div id="subTeacherWrap" class="field hidden">
+          <label class="title" for="substitute_teacher">代課老師姓名<span class="req">*</span></label>
+          <input id="substitute_teacher" name="substitute_teacher" type="text" placeholder="請填寫代課老師姓名">
+        </div>
+
+        <div class="field">
+          <label class="title">是否需要調課？<span class="req">*</span></label>
+          <div class="options">
+            <label class="option"><input type="radio" name="reschedule_status" value="不需要，請假當天由代課老師上課" required><span>不需要，請假當天由代課老師上課</span></label>
+            <label class="option"><input type="radio" name="reschedule_status" value="需要改期補課"><span>需要改期補課</span></label>
+            <label class="option"><input type="radio" name="reschedule_status" value="建議停課"><span>建議停課</span></label>
+            <label class="option"><input type="radio" name="reschedule_status" value="需與教室討論"><span>需與教室討論</span></label>
+          </div>
+        </div>
+
+        <div id="rescheduleWrap" class="hidden">
+          <div class="two-col">
+            <div class="field">
+              <label class="title" for="reschedule_date">建議補課日期<span class="req">*</span></label>
+              <input id="reschedule_date" name="reschedule_date" type="date">
+            </div>
+            <div class="field">
+              <label class="title" for="reschedule_time">建議補課時間<span class="req">*</span></label>
+              <input id="reschedule_time" name="reschedule_time" type="text" placeholder="例如：19:10–20:10">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="field">
+          <label class="title">請假原因<span class="req">*</span></label>
+          <div class="options">
+            <label class="option"><input type="radio" name="leave_reason" value="身體不適" required><span>身體不適</span></label>
+            <label class="option"><input type="radio" name="leave_reason" value="家庭因素"><span>家庭因素</span></label>
+            <label class="option"><input type="radio" name="leave_reason" value="進修／工作安排"><span>進修／工作安排</span></label>
+            <label class="option"><input type="radio" name="leave_reason" value="交通因素"><span>交通因素</span></label>
+            <label class="option"><input type="radio" name="leave_reason" value="私人行程"><span>私人行程</span></label>
+            <label class="option"><input type="radio" name="leave_reason" value="臨時狀況"><span>臨時狀況</span></label>
+            <label class="option"><input type="radio" name="leave_reason" value="其他"><span>其他</span></label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="title" for="note">其他備註</label>
+          <p class="help">如果有課程交接內容、學生注意事項、代課提醒或特殊狀況，請在這裡補充。</p>
+          <textarea id="note" name="note" placeholder="可填寫課程交接、學生注意事項或代課提醒"></textarea>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="submitBtn" type="submit">送出請假申請</button>
+        <div id="errorMsg" class="error">送出失敗，請稍後再試，或直接聯繫教室負責人。</div>
+      </div>
+    </form>
+
+    <section class="announce">
+      <strong>給老師看的簡短公告</strong><br>
+      老師們好😊 之後若有請假、調課或需要代課協助，請統一填寫請假表單。<br>
+      如果只是單堂課請假，只要填「日期＋課程名稱」即可。如果當天有多堂課受到影響，再選擇上午、下午、晚上或全天。<br>
+      臨時狀況請填完表單後同步私訊我，方便教室即時安排課程，謝謝大家配合🙏
+    </section>
+  </main>
+
+  <script>
+    const GAS_URL = '';
+    const LOCAL_KEY = 'wule_teacher_leave_requests';
+
+    const form = document.getElementById('leaveForm');
+    const periodCard = document.getElementById('periodCard');
+    const periodOtherWrap = document.getElementById('periodOtherWrap');
+    const subTeacherWrap = document.getElementById('subTeacherWrap');
+    const rescheduleWrap = document.getElementById('rescheduleWrap');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorMsg = document.getElementById('errorMsg');
+    const successBox = document.getElementById('successBox');
+
+    function radioValue(name) {
+      return form.querySelector(`[name="${name}"]:checked`)?.value || '';
+    }
+
+    function setRequired(selector, required) {
+      const el = document.querySelector(selector);
+      if (el) el.required = required;
+    }
+
+    function updateVisibility() {
+      const leaveType = radioValue('leave_type');
+      const needsPeriod = leaveType === '多堂課請假' || leaveType === '整天請假';
+      periodCard.classList.toggle('hidden', !needsPeriod);
+
+      const periodInputs = [...form.querySelectorAll('[name="affected_period"]')];
+      periodInputs.forEach(input => input.required = needsPeriod);
+
+      if (leaveType === '整天請假') {
+        const fullDay = form.querySelector('[name="affected_period"][value="全天"]');
+        if (fullDay) fullDay.checked = true;
+      }
+      if (!needsPeriod) {
+        periodInputs.forEach(input => input.checked = false);
+        document.getElementById('affected_period_other').value = '';
+      }
+
+      const periodOther = radioValue('affected_period') === '其他';
+      periodOtherWrap.classList.toggle('hidden', !periodOther);
+      setRequired('#affected_period_other', periodOther);
+
+      const hasSubstitute = radioValue('substitute_status') === '已找到代課老師';
+      subTeacherWrap.classList.toggle('hidden', !hasSubstitute);
+      setRequired('#substitute_teacher', hasSubstitute);
+      if (!hasSubstitute) document.getElementById('substitute_teacher').value = '';
+
+      const needsReschedule = radioValue('reschedule_status') === '需要改期補課';
+      rescheduleWrap.classList.toggle('hidden', !needsReschedule);
+      setRequired('#reschedule_date', needsReschedule);
+      setRequired('#reschedule_time', needsReschedule);
+      if (!needsReschedule) {
+        document.getElementById('reschedule_date').value = '';
+        document.getElementById('reschedule_time').value = '';
+      }
+    }
+
+    function buildPayload() {
+      const data = new FormData(form);
+      let affectedPeriod = data.get('affected_period') || '';
+      if (affectedPeriod === '其他') {
+        affectedPeriod = `其他：${data.get('affected_period_other') || ''}`;
+      }
+
+      return {
+        submitted_at: new Date().toISOString(),
+        teacher_name: data.get('teacher_name') || '',
+        leave_type: data.get('leave_type') || '',
+        leave_date: data.get('leave_date') || '',
+        affected_class: data.get('affected_class') || '',
+        affected_period: affectedPeriod,
+        substitute_status: data.get('substitute_status') || '',
+        substitute_teacher: data.get('substitute_teacher') || '',
+        reschedule_status: data.get('reschedule_status') || '',
+        reschedule_date: data.get('reschedule_date') || '',
+        reschedule_time: data.get('reschedule_time') || '',
+        leave_reason: data.get('leave_reason') || '',
+        note: data.get('note') || '',
+        admin_status: '待確認'
+      };
+    }
+
+    function saveLocal(payload) {
+      const items = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]');
+      items.unshift({ ...payload, row: `local-${Date.now()}` });
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(items));
+    }
+
+    async function submitPayload(payload) {
+      if (!GAS_URL) {
+        saveLocal(payload);
+        return;
+      }
+
+      await fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    form.addEventListener('change', updateVisibility);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorMsg.classList.remove('show');
+      if (!form.reportValidity()) return;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = '送出中...';
+
+      try {
+        await submitPayload(buildPayload());
+        form.reset();
+        updateVisibility();
+        form.classList.add('hidden');
+        successBox.classList.add('show');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (err) {
+        errorMsg.classList.add('show');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '送出請假申請';
+      }
+    });
+
+    updateVisibility();
+  </script>
+</body>
+</html>
+
