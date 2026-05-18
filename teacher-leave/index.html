@@ -102,6 +102,60 @@
       font-weight: 700;
     }
     .option input { accent-color: #d96b2a; width: 18px; height: 18px; flex: 0 0 auto; }
+    .calendar-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0;
+    }
+    .calendar-head div {
+      display: grid;
+      gap: 3px;
+      text-align: center;
+      color: #4f725d;
+    }
+    .calendar-head span {
+      color: #6f8274;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .month-btn {
+      padding: 9px 10px;
+      background: #efe4d8;
+      color: #5d4938;
+      font-size: 13px;
+    }
+    .calendar-weekdays,
+    .date-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .calendar-weekdays {
+      margin-bottom: 8px;
+      color: #9a8a7d;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+    }
+    .date-cell {
+      min-height: 36px;
+      padding: 0;
+      border: 1px solid #e0d1c2;
+      background: #fffdfa;
+      color: #2f2b27;
+      font-weight: 700;
+    }
+    .date-cell.blank {
+      visibility: hidden;
+    }
+    .date-cell.selected {
+      border-color: #d96b2a;
+      background: #fff2e6;
+      color: #a44712;
+      box-shadow: inset 0 0 0 2px rgba(217, 107, 42, .16);
+    }
     .hidden { display: none !important; }
     .actions { display: grid; gap: 10px; }
     button {
@@ -158,9 +212,9 @@
   <main>
     <section class="notice">
       <p>老師們好😊<br>之後若有請假、調課或需要代課協助，請統一填寫這份表單，方便教室安排課程與通知學生。</p>
-      <p>如果是單堂課請假，只需要填寫「日期」與「課程名稱」即可。<br>如果當天有多堂課受到影響，再選擇影響時段。</p>
+      <p>如果是單堂課請假，只需要填寫「日期」與「課程名稱」即可。<br>如果有多堂課受到影響，請直接在月曆上選出請假的日期，再填寫請假課程。</p>
       <p>若為臨時狀況，填完表單後也請同步私訊教室負責人，避免影響當天課程安排，謝謝配合🙏</p>
-      <div class="quick-note">核心資訊：老師姓名＋日期＋課程名稱＋有沒有代課＋要不要教室協助</div>
+      <div class="quick-note">核心資訊：老師姓名＋日期＋課程名稱＋有沒有代課</div>
     </section>
 
     <section id="successBox" class="success">
@@ -171,17 +225,15 @@
 
     <form id="leaveForm">
       <section class="card">
-        <div class="two-col">
-          <div class="field">
-            <label class="title" for="teacher_name">老師姓名<span class="req">*</span></label>
-            <input id="teacher_name" name="teacher_name" type="text" placeholder="請填寫老師姓名" required>
-          </div>
+        <div class="field">
+          <label class="title" for="teacher_name">老師姓名<span class="req">*</span></label>
+          <input id="teacher_name" name="teacher_name" type="text" placeholder="請填寫老師姓名" required>
+        </div>
 
-          <div class="field">
-            <label class="title" for="leave_date">請假日期<span class="req">*</span></label>
-            <p class="help">請選擇需要請假的日期。</p>
-            <input id="leave_date" name="leave_date" type="date" required>
-          </div>
+        <div class="field">
+          <label class="title" for="leave_date">請假日期<span class="req">*</span></label>
+          <p class="help">請先選擇主要請假日期，後面可依請假類型補充課程或多個日期。</p>
+          <input id="leave_date" name="leave_date" type="date" required>
         </div>
 
         <div class="field">
@@ -193,28 +245,42 @@
             <label class="option"><input type="radio" name="leave_type" value="其他"><span>其他</span></label>
           </div>
         </div>
+      </section>
+
+      <section id="singleCard" class="card">
+        <div class="field">
+          <label class="title" for="single_date">單堂請假日期<span class="req">*</span></label>
+          <input id="single_date" name="single_date" type="date">
+        </div>
 
         <div class="field">
-          <label class="title" for="affected_class">受影響課程名稱<span class="req">*</span></label>
-          <p class="help">如果是單堂課，請直接填課程名稱即可。如果是多堂課，請把會影響的課程都列出來。</p>
-          <textarea id="affected_class" name="affected_class" placeholder="例如：基礎空瑜&#10;或：兒童拳擊、拳擊基礎、燃脂階梯有氧" required></textarea>
+          <label class="title" for="single_class">單堂課程名稱<span class="req">*</span></label>
+          <input id="single_class" name="single_class" type="text" placeholder="例如：基礎空瑜">
         </div>
       </section>
 
-      <section id="periodCard" class="card hidden">
+      <section id="multiCard" class="card hidden">
         <div class="field">
-          <label class="title">多堂課影響時段<span class="req">*</span></label>
-          <div class="options">
-            <label class="option"><input type="radio" name="affected_period" value="上午"><span>上午</span></label>
-            <label class="option"><input type="radio" name="affected_period" value="下午"><span>下午</span></label>
-            <label class="option"><input type="radio" name="affected_period" value="晚上"><span>晚上</span></label>
-            <label class="option"><input type="radio" name="affected_period" value="全天"><span>全天</span></label>
-            <label class="option"><input type="radio" name="affected_period" value="其他"><span>其他</span></label>
+          <label class="title">請選擇受到影響的日期<span class="req">*</span></label>
+          <p class="help">可多選。請把所有需要請假的日期點起來。</p>
+          <div class="calendar-head">
+            <button class="month-btn" type="button" id="prevMonth">上一月</button>
+            <div>
+              <strong id="calendarTitle"></strong>
+              <span id="selectedCount">已選 0 天</span>
+            </div>
+            <button class="month-btn" type="button" id="nextMonth">下一月</button>
           </div>
+          <div class="calendar-weekdays">
+            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+          </div>
+          <div id="dateGrid" class="date-grid"></div>
+          <input id="multi_dates" name="multi_dates" type="hidden">
         </div>
-        <div id="periodOtherWrap" class="field hidden">
-          <label class="title" for="affected_period_other">其他時段補充</label>
-          <input id="affected_period_other" name="affected_period_other" type="text" placeholder="請補充影響時段">
+
+        <div class="field">
+          <label class="title" for="multi_class">請假課程<span class="req">*</span></label>
+          <textarea id="multi_class" name="multi_class" placeholder="例如：兒童拳擊、拳擊基礎、燃脂階梯有氧"></textarea>
         </div>
       </section>
 
@@ -234,28 +300,6 @@
           <input id="substitute_teacher" name="substitute_teacher" type="text" placeholder="請填寫代課老師姓名">
         </div>
 
-        <div class="field">
-          <label class="title">是否需要調課？<span class="req">*</span></label>
-          <div class="options">
-            <label class="option"><input type="radio" name="reschedule_status" value="不需要，請假當天由代課老師上課" required><span>不需要，請假當天由代課老師上課</span></label>
-            <label class="option"><input type="radio" name="reschedule_status" value="需要改期補課"><span>需要改期補課</span></label>
-            <label class="option"><input type="radio" name="reschedule_status" value="建議停課"><span>建議停課</span></label>
-            <label class="option"><input type="radio" name="reschedule_status" value="需與教室討論"><span>需與教室討論</span></label>
-          </div>
-        </div>
-
-        <div id="rescheduleWrap" class="hidden">
-          <div class="two-col">
-            <div class="field">
-              <label class="title" for="reschedule_date">建議補課日期<span class="req">*</span></label>
-              <input id="reschedule_date" name="reschedule_date" type="date">
-            </div>
-            <div class="field">
-              <label class="title" for="reschedule_time">建議補課時間<span class="req">*</span></label>
-              <input id="reschedule_time" name="reschedule_time" type="text" placeholder="例如：19:10–20:10">
-            </div>
-          </div>
-        </div>
       </section>
 
       <section class="card">
@@ -288,7 +332,7 @@
     <section class="announce">
       <strong>給老師看的簡短公告</strong><br>
       老師們好😊 之後若有請假、調課或需要代課協助，請統一填寫請假表單。<br>
-      如果只是單堂課請假，只要填「日期＋課程名稱」即可。如果當天有多堂課受到影響，再選擇上午、下午、晚上或全天。<br>
+      如果只是單堂課請假，只要填「日期＋課程名稱」即可。如果有多堂課受到影響，請在月曆上選出日期，再填寫請假課程。<br>
       臨時狀況請填完表單後同步私訊我，方便教室即時安排課程，謝謝大家配合🙏
     </section>
   </main>
@@ -298,13 +342,15 @@
     const LOCAL_KEY = 'wule_teacher_leave_requests';
 
     const form = document.getElementById('leaveForm');
-    const periodCard = document.getElementById('periodCard');
-    const periodOtherWrap = document.getElementById('periodOtherWrap');
+    const singleCard = document.getElementById('singleCard');
+    const multiCard = document.getElementById('multiCard');
     const subTeacherWrap = document.getElementById('subTeacherWrap');
-    const rescheduleWrap = document.getElementById('rescheduleWrap');
     const submitBtn = document.getElementById('submitBtn');
     const errorMsg = document.getElementById('errorMsg');
     const successBox = document.getElementById('successBox');
+    const selectedDates = new Set();
+    let calendarCursor = new Date();
+    calendarCursor.setDate(1);
 
     function radioValue(name) {
       return form.querySelector(`[name="${name}"]:checked`)?.value || '';
@@ -317,59 +363,104 @@
 
     function updateVisibility() {
       const leaveType = radioValue('leave_type');
-      const needsPeriod = leaveType === '多堂課請假' || leaveType === '整天請假';
-      periodCard.classList.toggle('hidden', !needsPeriod);
+      const isSingle = leaveType === '單堂課請假';
+      const isMultiLike = leaveType === '多堂課請假' || leaveType === '整天請假' || leaveType === '其他';
 
-      const periodInputs = [...form.querySelectorAll('[name="affected_period"]')];
-      periodInputs.forEach(input => input.required = needsPeriod);
+      singleCard.classList.toggle('hidden', !isSingle);
+      multiCard.classList.toggle('hidden', !isMultiLike);
+      setRequired('#single_date', isSingle);
+      setRequired('#single_class', isSingle);
+      setRequired('#multi_class', isMultiLike);
 
-      if (leaveType === '整天請假') {
-        const fullDay = form.querySelector('[name="affected_period"][value="全天"]');
-        if (fullDay) fullDay.checked = true;
+      if (isSingle) {
+        document.getElementById('multi_class').value = '';
+        selectedDates.clear();
+        renderCalendar();
+      } else {
+        document.getElementById('single_date').value = '';
+        document.getElementById('single_class').value = '';
+        if (leaveType === '整天請假' && document.getElementById('leave_date').value) {
+          selectedDates.clear();
+          selectedDates.add(document.getElementById('leave_date').value);
+          renderCalendar();
+        }
       }
-      if (!needsPeriod) {
-        periodInputs.forEach(input => input.checked = false);
-        document.getElementById('affected_period_other').value = '';
-      }
-
-      const periodOther = radioValue('affected_period') === '其他';
-      periodOtherWrap.classList.toggle('hidden', !periodOther);
-      setRequired('#affected_period_other', periodOther);
 
       const hasSubstitute = radioValue('substitute_status') === '已找到代課老師';
       subTeacherWrap.classList.toggle('hidden', !hasSubstitute);
       setRequired('#substitute_teacher', hasSubstitute);
       if (!hasSubstitute) document.getElementById('substitute_teacher').value = '';
+    }
 
-      const needsReschedule = radioValue('reschedule_status') === '需要改期補課';
-      rescheduleWrap.classList.toggle('hidden', !needsReschedule);
-      setRequired('#reschedule_date', needsReschedule);
-      setRequired('#reschedule_time', needsReschedule);
-      if (!needsReschedule) {
-        document.getElementById('reschedule_date').value = '';
-        document.getElementById('reschedule_time').value = '';
+    function formatIsoDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function renderCalendar() {
+      const grid = document.getElementById('dateGrid');
+      const title = document.getElementById('calendarTitle');
+      const count = document.getElementById('selectedCount');
+      const year = calendarCursor.getFullYear();
+      const month = calendarCursor.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const titleMonth = String(month + 1).padStart(2, '0');
+
+      title.textContent = `${year}-${titleMonth}`;
+      count.textContent = selectedDates.size ? `已選 ${selectedDates.size} 天` : '尚未選擇日期';
+      document.getElementById('multi_dates').value = [...selectedDates].sort().join('、');
+
+      const cells = [];
+      for (let i = 0; i < firstDay; i += 1) {
+        cells.push('<button class="date-cell blank" type="button" tabindex="-1"></button>');
+      }
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(year, month, day);
+        const iso = formatIsoDate(date);
+        const selected = selectedDates.has(iso) ? ' selected' : '';
+        cells.push(`<button class="date-cell${selected}" type="button" data-date="${iso}">${day}</button>`);
+      }
+      grid.innerHTML = cells.join('');
+    }
+
+    function syncSingleDate() {
+      const leaveDate = document.getElementById('leave_date').value;
+      const singleDate = document.getElementById('single_date');
+      if (leaveDate && !singleDate.value) singleDate.value = leaveDate;
+      if (leaveDate) {
+        const [year, month] = leaveDate.split('-').map(Number);
+        calendarCursor = new Date(year, month - 1, 1);
+        if (radioValue('leave_type') === '整天請假') {
+          selectedDates.clear();
+          selectedDates.add(leaveDate);
+        }
+        renderCalendar();
       }
     }
 
     function buildPayload() {
       const data = new FormData(form);
-      let affectedPeriod = data.get('affected_period') || '';
-      if (affectedPeriod === '其他') {
-        affectedPeriod = `其他：${data.get('affected_period_other') || ''}`;
-      }
+      const leaveType = data.get('leave_type') || '';
+      const isSingle = leaveType === '單堂課請假';
+      const multiDates = [...selectedDates].sort();
+      const leaveDate = isSingle ? (data.get('single_date') || data.get('leave_date') || '') : (multiDates[0] || data.get('leave_date') || '');
+      const affectedClass = isSingle ? (data.get('single_class') || '') : (data.get('multi_class') || '');
 
       return {
         submitted_at: new Date().toISOString(),
         teacher_name: data.get('teacher_name') || '',
-        leave_type: data.get('leave_type') || '',
-        leave_date: data.get('leave_date') || '',
-        affected_class: data.get('affected_class') || '',
-        affected_period: affectedPeriod,
+        leave_type: leaveType,
+        leave_date: leaveDate,
+        affected_class: affectedClass,
+        affected_period: isSingle ? '' : multiDates.join('、'),
         substitute_status: data.get('substitute_status') || '',
         substitute_teacher: data.get('substitute_teacher') || '',
-        reschedule_status: data.get('reschedule_status') || '',
-        reschedule_date: data.get('reschedule_date') || '',
-        reschedule_time: data.get('reschedule_time') || '',
+        reschedule_status: '',
+        reschedule_date: '',
+        reschedule_time: '',
         leave_reason: data.get('leave_reason') || '',
         note: data.get('note') || '',
         admin_status: '待確認'
@@ -397,9 +488,31 @@
     }
 
     form.addEventListener('change', updateVisibility);
+    document.getElementById('leave_date').addEventListener('change', syncSingleDate);
+    document.getElementById('prevMonth').addEventListener('click', () => {
+      calendarCursor.setMonth(calendarCursor.getMonth() - 1);
+      renderCalendar();
+    });
+    document.getElementById('nextMonth').addEventListener('click', () => {
+      calendarCursor.setMonth(calendarCursor.getMonth() + 1);
+      renderCalendar();
+    });
+    document.getElementById('dateGrid').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-date]');
+      if (!button) return;
+      const date = button.dataset.date;
+      if (selectedDates.has(date)) selectedDates.delete(date);
+      else selectedDates.add(date);
+      renderCalendar();
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       errorMsg.classList.remove('show');
+      if (radioValue('leave_type') !== '單堂課請假' && selectedDates.size === 0) {
+        errorMsg.textContent = '請先在月曆上選擇受到影響的日期。';
+        errorMsg.classList.add('show');
+        return;
+      }
       if (!form.reportValidity()) return;
 
       submitBtn.disabled = true;
@@ -408,7 +521,9 @@
       try {
         await submitPayload(buildPayload());
         form.reset();
+        selectedDates.clear();
         updateVisibility();
+        renderCalendar();
         form.classList.add('hidden');
         successBox.classList.add('show');
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -420,8 +535,8 @@
       }
     });
 
+    renderCalendar();
     updateVisibility();
   </script>
 </body>
 </html>
-

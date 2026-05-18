@@ -159,7 +159,7 @@
     <div class="header-inner">
       <div>
         <h1>老師請假後台</h1>
-        <p class="hint">優先看日期、老師、課程、代課與處理狀態</p>
+        <p class="hint">優先看日期、老師、請假課程、代課與處理狀態</p>
       </div>
       <button type="button" onclick="loadItems()">重新整理</button>
     </div>
@@ -196,9 +196,9 @@
             <th>請假日期</th>
             <th>老師</th>
             <th>請假類型</th>
-            <th>受影響課程</th>
+            <th>請假日期明細</th>
+            <th>請假課程</th>
             <th>代課狀態</th>
-            <th>調課狀態</th>
             <th>處理狀態</th>
           </tr>
         </thead>
@@ -240,9 +240,7 @@
 
       const waiting =
         (item.substitute_status === '已找到代課老師' && item.admin_status === '待確認') ||
-        (item.reschedule_status === '需要改期補課' && (!item.reschedule_date || !item.reschedule_time)) ||
-        item.substitute_status === '不確定，需與教室討論' ||
-        item.reschedule_status === '需與教室討論';
+        item.substitute_status === '不確定，需與教室討論';
 
       if (urgent) return { level: 'red', text: '需要立即處理' };
       if (waiting) return { level: 'yellow', text: '待確認' };
@@ -315,9 +313,9 @@
             <td>${escapeHtml(item.leave_date)}</td>
             <td>${escapeHtml(item.teacher_name)}</td>
             <td>${escapeHtml(item.leave_type)}</td>
+            <td>${escapeHtml(item.affected_period || item.leave_date)}</td>
             <td>${escapeHtml(item.affected_class)}</td>
             <td>${escapeHtml(item.substitute_status)}</td>
-            <td>${escapeHtml(item.reschedule_status)}</td>
             <td>${escapeHtml(item.admin_status)}</td>
           </tr>
         `;
@@ -337,13 +335,10 @@
         ['老師姓名', item.teacher_name],
         ['請假類型', item.leave_type],
         ['請假日期', item.leave_date],
-        ['受影響課程名稱', item.affected_class],
-        ['多堂課影響時段', item.affected_period],
+        ['請假日期明細', item.affected_period || item.leave_date],
+        ['請假課程', item.affected_class],
         ['代課狀態', item.substitute_status],
         ['代課老師姓名', item.substitute_teacher],
-        ['是否需要調課', item.reschedule_status],
-        ['建議補課日期', item.reschedule_date],
-        ['建議補課時間', item.reschedule_time],
         ['請假原因', item.leave_reason],
         ['其他備註', item.note]
       ];
@@ -440,4 +435,3 @@
   </script>
 </body>
 </html>
-
