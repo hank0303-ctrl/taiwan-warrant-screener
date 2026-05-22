@@ -1115,6 +1115,12 @@ body{{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
 .tracker-danger{{background:#fff5f3!important;color:#c0392b!important;border:1px solid #f0c4bd!important}}
 .tracker-main-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:10px}}
 .tracker-small-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px}}
+.metric-card{{background:#f8f7f4;border-radius:12px;padding:14px;text-align:left;border:1px solid #f1eee8}}
+.metric-card.primary{{background:#fff;border-color:#e7e2da;box-shadow:0 1px 5px rgba(0,0,0,.04)}}
+.metric-label{{font-size:12px;color:#888;margin-bottom:6px}}
+.metric-value{{font-size:26px;font-weight:800;line-height:1.1}}
+.metric-note{{font-size:11px;color:#aaa;margin-top:6px;line-height:1.4}}
+.metric-small .metric-value{{font-size:20px}}
 .tracker-filter{{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px}}
 .tracker-filter button{{border:1px solid #ddd;background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer}}
 .tracker-filter button.active{{background:#16213e;color:#fff;border-color:#16213e}}
@@ -1355,6 +1361,18 @@ function toggleAllLedger() {{
   extra.classList.toggle('show');
   if (btn) btn.textContent = extra.classList.contains('show') ? '收合交易紀錄' : '查看全部交易紀錄';
 }}
+document.addEventListener('click', function(e) {{
+  var el = e.target.closest('[data-tracker-action]');
+  if (!el) return;
+  var action = el.getAttribute('data-tracker-action');
+  if (action === 'filter') setPositionFilter(el.getAttribute('data-filter'));
+  if (action === 'prefill') prefillTrade(el.getAttribute('data-pos-key'), el.getAttribute('data-side'), el.getAttribute('data-all-out') === '1');
+  if (action === 'prompt-price') updatePositionPrice(el.getAttribute('data-pos-key'), prompt('輸入新的目前價格', el.getAttribute('data-current-price') || ''));
+  if (action === 'edit-tx') editTradeRecord(el.getAttribute('data-tx-id'));
+  if (action === 'delete-tx') deleteTradeRecord(el.getAttribute('data-tx-id'));
+  if (action === 'toggle-ledger') toggleAllLedger();
+  if (action === 'go-warrants') {{ showTab('warrants'); location.hash = 'warrants'; }}
+}});
 function trackerBuildPositions(rows) {{
   var prices = trackerLoadPrices();
   var map = {{}};
@@ -1650,20 +1668,20 @@ function renderTracker() {{
   positions.forEach(function(p){{ if (p.status === 'closed' && p.transactions.some(function(tx){{return trackerMonthKey(tx.trade_date) === monthKey;}})) monthlyPnl += p.realized_pnl; }});
   summary.innerHTML =
     '<div class="tracker-main-grid">' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(totalAssets)+'</div><div class="stat-lbl">總資產</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+pnlColor+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="stat-lbl">總損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+pnlColor+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="stat-lbl">整體報酬率</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(monthlyPnl>0?'#27ae60':monthlyPnl<0?'#e74c3c':'#555')+'">'+(monthlyPnl>0?'+':'')+trackerMoney(monthlyPnl)+'</div><div class="stat-lbl">本月損益</div></div>' +
+    '<div class="metric-card primary"><div class="metric-label">總資產</div><div class="metric-value" style="color:#333">'+trackerMoney(totalAssets)+'</div><div class="metric-note">可用現金 + 持倉市值</div></div>' +
+    '<div class="metric-card primary"><div class="metric-label">總損益</div><div class="metric-value" style="color:'+pnlColor+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="metric-note">已實現 + 未實現</div></div>' +
+    '<div class="metric-card primary"><div class="metric-label">整體報酬率</div><div class="metric-value" style="color:'+pnlColor+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="metric-note">以累計投入本金計算</div></div>' +
+    '<div class="metric-card primary"><div class="metric-label">本月損益</div><div class="metric-value" style="color:'+(monthlyPnl>0?'#27ae60':monthlyPnl<0?'#e74c3c':'#555')+'">'+(monthlyPnl>0?'+':'')+trackerMoney(monthlyPnl)+'</div><div class="metric-note">已完成交易估算</div></div>' +
     '</div>' +
     '<div class="tracker-small-grid">' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.availableCash)+'</div><div class="stat-lbl">可用現金</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.marketValue)+'</div><div class="stat-lbl">持倉市值</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+realizedColor+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</div><div class="stat-lbl">已實現損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+unrealizedColor+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</div><div class="stat-lbl">未實現損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.usagePct.toFixed(1)+'%</div><div class="stat-lbl">資金使用率</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.openCount+'</div><div class="stat-lbl">目前持倉檔數</div></div>' +
+    '<div class="metric-card metric-small"><div class="metric-label">可用現金</div><div class="metric-value" style="color:#555">'+trackerMoney(summaryData.availableCash)+'</div></div>' +
+    '<div class="metric-card metric-small"><div class="metric-label">持倉市值</div><div class="metric-value" style="color:#555">'+trackerMoney(summaryData.marketValue)+'</div></div>' +
+    '<div class="metric-card metric-small"><div class="metric-label">已實現</div><div class="metric-value" style="color:'+realizedColor+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</div></div>' +
+    '<div class="metric-card metric-small"><div class="metric-label">未實現</div><div class="metric-value" style="color:'+unrealizedColor+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</div></div>' +
+    '<div class="metric-card metric-small"><div class="metric-label">資金使用率</div><div class="metric-value" style="color:#555">'+summaryData.usagePct.toFixed(1)+'%</div></div>' +
+    '<div class="metric-card metric-small"><div class="metric-label">持倉檔數</div><div class="metric-value" style="color:#555">'+summaryData.openCount+'</div></div>' +
     '</div>';
-  var filterButtons = [['all','全部'],['stock','股票'],['call','認購'],['put','認售'],['profit','獲利'],['loss','虧損']].map(function(item){{return '<button class="'+(trackerPositionFilter===item[0]?'active':'')+'" onclick="setPositionFilter(&quot;'+item[0]+'&quot;)">'+item[1]+'</button>';}}).join('');
+  var filterButtons = [['all','全部'],['stock','股票'],['call','認購'],['put','認售'],['profit','獲利'],['loss','虧損']].map(function(item){{return '<button class="'+(trackerPositionFilter===item[0]?'active':'')+'" data-tracker-action="filter" data-filter="'+item[0]+'">'+item[1]+'</button>';}}).join('');
   var positionHtml = filteredPositions.length ? filteredPositions.map(function(p) {{
     var color = p.total_pnl > 0 ? '#27ae60' : p.total_pnl < 0 ? '#e74c3c' : '#555';
     var txRows = p.transactions.map(function(tx) {{
@@ -1677,7 +1695,7 @@ function renderTracker() {{
       '<div class="position-line">持有 '+trackerMoney(p.remaining_quantity)+'｜均價 '+trackerPrice(p.average_cost)+'｜現價 <input value="'+trackerPrice(p.current_price)+'" onchange="updatePositionPrice(&quot;'+p.key+'&quot;, this.value)" style="width:78px;border:1px solid #ddd;border-radius:6px;padding:3px 6px"></div>' +
       '<div class="position-line">投入 '+trackerMoney(p.remaining_cost)+'｜市值 '+trackerMoney(p.market_value)+'</div>' +
       '<div class="position-line">已實現 '+(p.realized_pnl>0?'+':'')+trackerMoney(p.realized_pnl)+'｜未實現 '+(p.unrealized_pnl>0?'+':'')+trackerMoney(p.unrealized_pnl)+'｜買進 '+trackerMoney(p.total_buy_quantity)+'｜賣出 '+trackerMoney(p.total_sell_quantity)+'</div>' +
-      '<div class="mini-actions"><button onclick="prefillTrade(&quot;'+p.key+'&quot;, &quot;buy&quot;)" style="background:#16213e;color:#fff">加碼</button><button onclick="prefillTrade(&quot;'+p.key+'&quot;, &quot;sell&quot;)" style="background:#e67e22;color:#fff">部分賣出</button><button onclick="prefillTrade(&quot;'+p.key+'&quot;, &quot;sell&quot;, true)" style="background:#fff5f3;color:#c0392b">全部出場</button><button onclick="updatePositionPrice(&quot;'+p.key+'&quot;, prompt(&quot;輸入新的目前價格&quot;, &quot;'+trackerPrice(p.current_price)+'&quot;))" style="background:#f4f4f4;color:#555">更新現價</button></div>' +
+      '<div class="mini-actions"><button data-tracker-action="prefill" data-pos-key="'+trackerEscape(p.key)+'" data-side="buy" style="background:#16213e;color:#fff">加碼</button><button data-tracker-action="prefill" data-pos-key="'+trackerEscape(p.key)+'" data-side="sell" style="background:#e67e22;color:#fff">部分賣出</button><button data-tracker-action="prefill" data-pos-key="'+trackerEscape(p.key)+'" data-side="sell" data-all-out="1" style="background:#fff5f3;color:#c0392b">全部出場</button><button data-tracker-action="prompt-price" data-pos-key="'+trackerEscape(p.key)+'" data-current-price="'+trackerPrice(p.current_price)+'" style="background:#f4f4f4;color:#555">更新現價</button></div>' +
       '<details style="margin-top:8px"><summary style="cursor:pointer;color:#1f5f99;font-size:12px">明細</summary><div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px"><thead><tr><th>日期</th><th>方向</th><th>價格</th><th>數量</th><th>金額</th><th>費用</th></tr></thead><tbody>'+txRows+'</tbody></table></div></details>' +
       '</div>';
   }}).join('') : '<p style="color:#aaa;padding:10px 0">目前沒有符合篩選的開放持倉。</p>';
@@ -1685,7 +1703,7 @@ function renderTracker() {{
   var wins = closedPositions.filter(function(p){{return p.realized_pnl > 0;}}).length;
   var closedRealized = closedPositions.reduce(function(sum,p){{return sum+p.realized_pnl;}},0);
   var avgReturn = closedPositions.length ? closedPositions.reduce(function(sum,p){{return sum + (p.buy_spend ? p.realized_pnl / p.buy_spend * 100 : 0);}},0) / closedPositions.length : 0;
-  var completedHtml = '<div class="tracker-small-grid"><div class="stat-box"><div class="stat-val">'+closedPositions.length+'</div><div class="stat-lbl">本月完成交易數</div></div><div class="stat-box"><div class="stat-val">'+(closedPositions.length?Math.round(wins/closedPositions.length*100):0)+'%</div><div class="stat-lbl">勝率</div></div><div class="stat-box"><div class="stat-val" style="color:'+(closedRealized>=0?'#27ae60':'#e74c3c')+'">'+(closedRealized>0?'+':'')+trackerMoney(closedRealized)+'</div><div class="stat-lbl">已實現損益</div></div><div class="stat-box"><div class="stat-val" style="color:'+(avgReturn>=0?'#27ae60':'#e74c3c')+'">'+(avgReturn>0?'+':'')+avgReturn.toFixed(2)+'%</div><div class="stat-lbl">平均報酬率</div></div></div><button class="tracker-secondary" onclick="toggleAllLedger()">查看已完成交易</button>';
+  var completedHtml = '<div class="tracker-small-grid"><div class="stat-box"><div class="stat-val">'+closedPositions.length+'</div><div class="stat-lbl">本月完成交易數</div></div><div class="stat-box"><div class="stat-val">'+(closedPositions.length?Math.round(wins/closedPositions.length*100):0)+'%</div><div class="stat-lbl">勝率</div></div><div class="stat-box"><div class="stat-val" style="color:'+(closedRealized>=0?'#27ae60':'#e74c3c')+'">'+(closedRealized>0?'+':'')+trackerMoney(closedRealized)+'</div><div class="stat-lbl">已實現損益</div></div><div class="stat-box"><div class="stat-val" style="color:'+(avgReturn>=0?'#27ae60':'#e74c3c')+'">'+(avgReturn>0?'+':'')+avgReturn.toFixed(2)+'%</div><div class="stat-lbl">平均報酬率</div></div></div><button class="tracker-secondary" data-tracker-action="toggle-ledger">查看已完成交易</button>';
   var sortedRows = rows.slice().sort(function(a,b){{return String(b.trade_date||'').localeCompare(String(a.trade_date||'')) || String(b.created_at||'').localeCompare(String(a.created_at||''));}});
   function ledgerRow(tx, withActions) {{
     var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
@@ -1697,18 +1715,18 @@ function renderTracker() {{
       '<td style="padding:7px;text-align:right">'+trackerPrice(tx.price)+'</td>' +
       '<td style="padding:7px;text-align:right">'+trackerMoney(tx.quantity)+'</td>' +
       '<td style="padding:7px;text-align:right">'+trackerMoney(gross)+'</td>' +
-      (withActions ? '<td style="padding:7px;white-space:nowrap"><button onclick="editTradeRecord(&quot;'+tx.id+'&quot;)" style="border:none;background:#16213e;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">修改</button> <button onclick="deleteTradeRecord(&quot;'+tx.id+'&quot;)" style="border:none;background:#f4f4f4;color:#777;border-radius:6px;padding:4px 8px;cursor:pointer">刪除</button></td>' : '') +
+      (withActions ? '<td style="padding:7px;white-space:nowrap"><button data-tracker-action="edit-tx" data-tx-id="'+trackerEscape(tx.id)+'" style="border:none;background:#16213e;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">修改</button> <button data-tracker-action="delete-tx" data-tx-id="'+trackerEscape(tx.id)+'" style="border:none;background:#f4f4f4;color:#777;border-radius:6px;padding:4px 8px;cursor:pointer">刪除</button></td>' : '') +
       '</tr>';
   }}
   var recentRows = sortedRows.slice(0,5).map(function(tx){{return ledgerRow(tx, false);}}).join('');
   var extraRows = sortedRows.map(function(tx){{return ledgerRow(tx, true);}}).join('');
-  var ledgerHtml = rows.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f8f8f8;color:#777"><th style="padding:7px">日期</th><th style="padding:7px">商品</th><th style="padding:7px">方向</th><th style="padding:7px;text-align:right">成交價格</th><th style="padding:7px;text-align:right">數量</th><th style="padding:7px;text-align:right">交易金額</th></tr></thead><tbody>'+recentRows+'</tbody><tbody id="ledger-extra" class="ledger-extra"><tr><td colspan="7" style="padding:8px;color:#777;background:#fafafa">全部交易紀錄：可在此修改、刪除。日期 / 帳戶 / 類型篩選下一版接上。</td></tr>'+extraRows+'</tbody></table></div>' + (rows.length>5 ? '<button id="ledger-toggle" class="tracker-secondary" onclick="toggleAllLedger()" style="margin-top:8px">查看全部交易紀錄</button>' : '') : '<p style="color:#aaa;padding:10px 0">尚無交易紀錄。</p>';
+  var ledgerHtml = rows.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f8f8f8;color:#777"><th style="padding:7px">日期</th><th style="padding:7px">商品</th><th style="padding:7px">方向</th><th style="padding:7px;text-align:right">成交價格</th><th style="padding:7px;text-align:right">數量</th><th style="padding:7px;text-align:right">交易金額</th></tr></thead><tbody>'+recentRows+'</tbody><tbody id="ledger-extra" class="ledger-extra"><tr><td colspan="7" style="padding:8px;color:#777;background:#fafafa">全部交易紀錄：可在此修改、刪除。日期 / 帳戶 / 類型篩選下一版接上。</td></tr>'+extraRows+'</tbody></table></div>' + (rows.length>5 ? '<button id="ledger-toggle" class="tracker-secondary" data-tracker-action="toggle-ledger" style="margin-top:8px">查看全部交易紀錄</button>' : '') : '<p style="color:#aaa;padding:10px 0">尚無交易紀錄。</p>';
   body.innerHTML =
     '<section><h3 style="font-size:16px;margin:14px 0 8px">目前持倉</h3><div class="tracker-filter">'+filterButtons+'</div>'+positionHtml+'</section>' +
     '<section><h3 style="font-size:16px;margin:16px 0 8px">已完成交易</h3>'+completedHtml+'</section>' +
     '<section><h3 style="font-size:16px;margin:16px 0 8px">最近交易紀錄</h3>'+ledgerHtml+'</section>' +
     '<section><h3 style="font-size:16px;margin:16px 0 8px">績效分析</h3><div class="analysis-entry"><button>依交易依據</button><button>依策略</button><button>依帳戶</button><button>依商品類型</button></div></section>' +
-    '<section style="margin-top:14px"><button onclick="showTab(&quot;warrants&quot;);location.hash=&quot;warrants&quot;" class="tracker-secondary">前往權證篩選</button></section>';
+    '<section style="margin-top:14px"><button data-tracker-action="go-warrants" class="tracker-secondary">前往權證篩選</button></section>';
 }}
 document.addEventListener('DOMContentLoaded', function() {{
   showTab(location.hash === '#warrants' ? 'warrants' : location.hash === '#returns' ? 'returns' : 'stocks');
