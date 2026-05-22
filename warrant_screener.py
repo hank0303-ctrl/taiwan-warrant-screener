@@ -1524,16 +1524,32 @@ function trackerMoney(v) {{
 function trackerPrice(v) {{
   return Number(v || 0).toLocaleString('zh-TW', {{minimumFractionDigits: 2, maximumFractionDigits: 2}});
 }}
+function trackerRenderCashDetail(summaryData, txCount) {{
+  var warn = summaryData.principal <= 0 && txCount > 0
+    ? '<div style="margin-top:6px;color:#e74c3c">提醒：目前本金為 0，但仍有交易紀錄，請確認是否要設定投入本金。</div>'
+    : '';
+  return '<div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px 12px;margin:0 0 12px;font-size:12px;color:#666;line-height:1.7">' +
+    '<b style="color:#333">資金明細</b><br>' +
+    '可用資金 = 累計投入本金 ' + trackerMoney(summaryData.principal) +
+    ' - 累計買進支出 ' + trackerMoney(summaryData.buySpend) +
+    ' + 累計賣出收入 ' + trackerMoney(summaryData.sellIncome) +
+    ' = <b style="color:'+(summaryData.availableCash>=0?'#27ae60':'#e74c3c')+'">' + trackerMoney(summaryData.availableCash) + '</b>' +
+    '<br><span style="color:#999">買進支出含手續費、交易稅與其他成本；賣出收入已扣除手續費、交易稅與其他成本。</span>' +
+    warn +
+    '</div>';
+}}
 function renderTracker() {{
   var rows = trackerLoad();
   var body = document.getElementById('tracker-body');
   var summary = document.getElementById('tracker-summary');
+  var cashDetail = document.getElementById('tracker-cash-detail');
   if (!body || !summary) return;
   var budgetInput = document.getElementById('rt-budget');
   if (budgetInput && budgetInput.value === '') budgetInput.value = trackerLoadBudget();
   var positions = trackerBuildPositions(rows);
   var openPositions = positions.filter(function(p){{return p.status === 'open';}});
   var summaryData = trackerCalcSummary(rows, positions);
+  if (cashDetail) cashDetail.innerHTML = trackerRenderCashDetail(summaryData, rows.length);
   summary.innerHTML =
     '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.principal)+'</div><div class="stat-lbl">累計投入本金</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.availableCash>=0?'#555':'#e74c3c')+'">'+trackerMoney(summaryData.availableCash)+'</div><div class="stat-lbl">可用資金</div></div>' +
@@ -1671,6 +1687,7 @@ document.addEventListener('DOMContentLoaded', function() {{
   </div>
   <h3 style="font-size:16px;margin:10px 0 8px">A. 績效總覽</h3>
   <div id="tracker-summary" class="stat-grid" style="margin-bottom:12px"></div>
+  <div id="tracker-cash-detail"></div>
   <input id="rt-edit-id" type="hidden">
   <div class="tracker-grid">
     <label>類型
