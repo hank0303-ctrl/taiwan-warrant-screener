@@ -1078,91 +1078,96 @@ def generate_html(strong_stocks, weak_stocks, stock_indicators,
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
-     background:#f0ede8;color:#333;padding:16px}}
+     background:#f0ede8;color:#1e293b;padding:16px}}
 .wrap{{max-width:980px;margin:0 auto}}
-.hdr{{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;
-     border-radius:14px;padding:20px 24px;margin-bottom:14px}}
-.hdr h1{{font-size:20px;font-weight:700;letter-spacing:.5px}}
-.hdr .sub{{font-size:12px;color:#aaa;margin-top:6px}}
-.card{{background:#fff;border-radius:14px;padding:18px 20px;margin-bottom:14px;
-      box-shadow:0 1px 8px rgba(0,0,0,.07)}}
+.hdr{{background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;
+     border-radius:16px;padding:22px 26px;margin-bottom:14px}}
+.hdr h1{{font-size:20px;font-weight:800;letter-spacing:.3px}}
+.hdr .sub{{font-size:12px;color:#94a3b8;margin-top:6px}}
+.card{{background:#fff;border-radius:16px;padding:20px 22px;margin-bottom:14px;
+      box-shadow:0 2px 12px rgba(15,23,42,.07)}}
 .card-title{{font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}}
 .badge{{font-size:11px;font-weight:normal;padding:2px 8px;border-radius:20px;color:#fff}}
 .stat-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}}
 .stat-box{{background:#f8f7f4;border-radius:10px;padding:14px;text-align:center}}
 .stat-val{{font-size:26px;font-weight:700}}
-.stat-lbl{{font-size:11px;color:#aaa;margin-top:3px}}
+.stat-lbl{{font-size:11px;color:#94a3b8;margin-top:3px}}
 .tabs{{display:flex;gap:8px;margin:0 0 14px;position:sticky;top:8px;z-index:5;
       background:rgba(240,237,232,.92);backdrop-filter:blur(8px);padding:6px 0}}
-.tab-btn{{flex:1;border:1px solid #ddd;background:#fff;color:#555;border-radius:10px;
-         padding:10px 12px;font-size:14px;font-weight:700;cursor:pointer}}
-.tab-btn.active{{background:#16213e;color:#fff;border-color:#16213e}}
+.tab-btn{{flex:1;border:1px solid #e2e8f0;background:#fff;color:#64748b;border-radius:10px;
+         padding:10px 12px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s}}
+.tab-btn.active{{background:#0f172a;color:#fff;border-color:#0f172a}}
 .tab-panel{{display:none}}
 .tab-panel.active{{display:block}}
 .tracker-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}}
-.tracker-grid label{{font-size:11px;color:#777;font-weight:700}}
-.tracker-grid input,.tracker-grid select{{width:100%;margin-top:4px;border:1px solid #ddd;border-radius:8px;
-      padding:9px 10px;font-size:13px;background:#fff}}
+.tracker-grid label{{font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px}}
+.tracker-grid input,.tracker-grid select{{width:100%;margin-top:4px;border:1px solid #e2e8f0;border-radius:8px;
+      padding:9px 10px;font-size:13px;background:#fff;color:#334155}}
 .tracker-actions{{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}}
 .tracker-actions button{{border:none;border-radius:8px;padding:9px 12px;font-size:13px;font-weight:700;cursor:pointer}}
-.tracker-top{{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}}
-.tracker-title h2{{font-size:20px;margin-bottom:4px}}
-.tracker-sub{{font-size:12px;color:#888}}
+.tracker-top{{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid #f1f5f9;margin-bottom:20px}}
+.tracker-title h2{{font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-.3px;margin-bottom:3px}}
+.tracker-sub{{font-size:12px;color:#94a3b8}}
 .tracker-toolbar{{display:flex;gap:8px;flex-wrap:wrap;align-items:center}}
-.tracker-toolbar select,.tracker-toolbar button{{border:1px solid #ddd;border-radius:8px;padding:9px 10px;background:#fff;font-size:13px}}
-.tracker-primary{{background:#16213e!important;color:#fff!important;border-color:#16213e!important;font-weight:700;cursor:pointer}}
-.tracker-secondary{{background:#f8f7f4!important;color:#555!important;font-weight:700;cursor:pointer}}
-.tracker-danger{{background:#fff5f3!important;color:#c0392b!important;border:1px solid #f0c4bd!important}}
-.tracker-main-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:10px}}
+.tracker-toolbar select{{border:1px solid #e2e8f0;border-radius:9px;padding:8px 10px;background:#f8fafc;font-size:13px;color:#475569}}
+.tracker-primary{{background:#0f172a!important;color:#fff!important;border:none!important;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.2px}}
+.tracker-secondary{{background:#f1f5f9!important;color:#475569!important;border:1px solid #e2e8f0!important;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer}}
+.tracker-danger{{background:#fff5f3!important;color:#c0392b!important;border:1px solid #fecaca!important;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}}
+.tracker-main-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:4px}}
 .tracker-small-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px}}
-.metric-card{{background:#fff;border-radius:12px;padding:16px;text-align:left;border:0;box-shadow:0 1px 6px rgba(0,0,0,.045)}}
-.metric-card.primary{{min-height:112px}}
-.metric-label{{font-size:12px;color:#888;margin-bottom:6px}}
-.metric-value{{font-size:28px;font-weight:800;line-height:1.1}}
-.metric-note{{font-size:11px;color:#aaa;margin-top:6px;line-height:1.4}}
+.metric-card{{background:#fff;border-radius:16px;padding:18px 20px;border:1px solid #f1f5f9;box-shadow:0 2px 12px rgba(15,23,42,.06);position:relative;overflow:hidden}}
+.metric-card::before{{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent,#334155);opacity:.8;border-radius:16px 16px 0 0}}
+.metric-card.primary{{min-height:108px}}
+.metric-label{{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-bottom:10px}}
+.metric-value{{font-size:28px;font-weight:800;line-height:1.1;letter-spacing:-.5px}}
+.metric-note{{font-size:11px;color:#94a3b8;margin-top:8px;line-height:1.4}}
 .metric-small .metric-value{{font-size:20px}}
-.returns-dashboard{{display:grid;gap:14px}}
+.cash-detail-row{{display:flex;gap:0;flex-wrap:wrap;background:#f8fafc;border:1px solid #e8eef4;border-radius:12px;padding:10px 16px;margin:8px 0 16px;font-size:12px;color:#64748b}}
+.cash-detail-row span{{padding:2px 12px 2px 0;border-right:1px solid #e2e8f0;margin-right:12px;white-space:nowrap}}
+.cash-detail-row span:last-child{{border-right:none;margin-right:0}}
+.section-label{{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#94a3b8;margin:16px 0 10px;padding-left:2px}}
+.returns-dashboard{{display:grid;gap:16px}}
 .chart-grid{{display:grid;grid-template-columns:1.3fr .9fr;gap:12px}}
-.chart-card{{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 6px rgba(0,0,0,.045)}}
-.chart-title{{font-size:14px;font-weight:800;margin-bottom:8px;color:#333;display:flex;justify-content:space-between;gap:8px;align-items:center}}
+.chart-card{{background:#fff;border-radius:16px;padding:18px;box-shadow:0 2px 10px rgba(15,23,42,.05);border:1px solid #f1f5f9}}
+.chart-title{{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:12px;display:flex;justify-content:space-between;gap:8px;align-items:center}}
 .chart-tabs{{display:flex;gap:4px;flex-wrap:wrap}}
-.chart-tabs button{{border:0;background:#f4f4f4;border-radius:999px;padding:4px 8px;font-size:11px;color:#666}}
-.chart-tabs button.active{{background:#16213e;color:#fff}}
+.chart-tabs button{{border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:4px 10px;font-size:11px;color:#64748b;cursor:pointer;font-weight:600}}
+.chart-tabs button.active{{background:#0f172a;color:#fff;border-color:#0f172a}}
 .simple-chart{{width:100%;height:190px;display:block}}
 .donut-wrap{{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}}
-.donut-legend{{font-size:12px;color:#666;line-height:1.8}}
+.donut-legend{{font-size:12px;color:#64748b;line-height:1.9}}
 .holding-list{{display:grid;gap:8px}}
-.holding-row{{background:#fff;border-radius:12px;padding:12px;box-shadow:0 1px 6px rgba(0,0,0,.04);display:grid;grid-template-columns:1.2fr repeat(4,.75fr);gap:8px;align-items:center}}
-.holding-row b{{font-size:14px}}
-.holding-cell{{font-size:12px;color:#777}}
-.holding-cell strong{{display:block;font-size:15px;color:#333;margin-top:2px}}
+.holding-row{{background:#fff;border-radius:14px;padding:14px 18px;box-shadow:0 1px 6px rgba(15,23,42,.05);border:1px solid #f1f5f9;display:grid;grid-template-columns:1.2fr repeat(4,.75fr);gap:8px;align-items:center}}
+.holding-row b{{font-size:14px;color:#0f172a;font-weight:800}}
+.holding-cell{{font-size:12px;color:#94a3b8;font-weight:500}}
+.holding-cell strong{{display:block;font-size:14px;color:#334155;margin-top:3px;font-weight:700}}
 .recent-list{{display:grid;gap:6px}}
-.recent-row{{background:#fff;border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:90px 1fr 70px 90px;gap:8px;align-items:center;box-shadow:0 1px 5px rgba(0,0,0,.035);font-size:12px}}
+.recent-row{{background:#fff;border-radius:12px;padding:10px 14px;display:grid;grid-template-columns:90px 1fr 70px 90px;gap:8px;align-items:center;box-shadow:0 1px 4px rgba(15,23,42,.04);border:1px solid #f1f5f9;font-size:12px}}
 .tracker-filter{{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px}}
-.tracker-filter button{{border:1px solid #ddd;background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer}}
-.tracker-filter button.active{{background:#16213e;color:#fff;border-color:#16213e}}
-.position-card{{border:1px solid #eee;border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}}
+.tracker-filter button{{border:1px solid #e2e8f0;background:#fff;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;font-weight:600;color:#64748b}}
+.tracker-filter button.active{{background:#0f172a;color:#fff;border-color:#0f172a}}
+.position-card{{border:1px solid #f1f5f9;border-radius:14px;padding:14px 18px;margin-bottom:10px;background:#fff;box-shadow:0 1px 4px rgba(15,23,42,.04)}}
 .position-head{{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}}
-.position-title{{font-weight:800;font-size:15px}}
-.position-meta,.position-line{{font-size:12px;color:#777;line-height:1.7}}
+.position-title{{font-weight:800;font-size:15px;color:#0f172a}}
+.position-meta,.position-line{{font-size:12px;color:#94a3b8;line-height:1.7}}
 .position-pnl{{text-align:right;font-weight:800;font-size:18px}}
-.mini-actions{{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}}
-.mini-actions button{{border:none;border-radius:7px;padding:7px 9px;font-size:12px;font-weight:700;cursor:pointer}}
-.returns-modal{{display:none;position:fixed;inset:0;background:rgba(20,20,24,.38);z-index:50;padding:18px;align-items:flex-end;justify-content:center}}
+.mini-actions{{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}}
+.mini-actions button{{border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#475569}}
+.returns-modal{{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:50;padding:18px;align-items:flex-end;justify-content:center}}
 .returns-modal.open{{display:flex}}
-.returns-dialog{{background:#fff;border-radius:14px;width:min(760px,100%);max-height:92vh;overflow:auto;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.22)}}
-.returns-dialog-head{{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}}
-.returns-close{{border:none;background:#f4f4f4;border-radius:8px;padding:7px 10px;cursor:pointer}}
-.advanced-box{{margin-top:10px;border-top:1px solid #eee;padding-top:10px}}
+.returns-dialog{{background:#fff;border-radius:20px;width:min(760px,100%);max-height:92vh;overflow:auto;padding:24px;box-shadow:0 20px 60px rgba(15,23,42,.22)}}
+.returns-dialog-head{{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f1f5f9}}
+.returns-close{{border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px;color:#64748b;font-weight:600}}
+.advanced-box{{margin-top:10px;border-top:1px solid #f1f5f9;padding-top:12px}}
 .ledger-extra{{display:none}}
 .ledger-extra.show{{display:block}}
 .analysis-entry{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}}
-.analysis-entry button{{border:1px solid #eee;background:#fafafa;border-radius:8px;padding:12px;font-weight:700;color:#555;cursor:pointer}}
-.profit-bar{{height:8px;background:#eee;border-radius:99px;overflow:hidden;margin-top:5px}}
-.profit-fill{{height:8px;border-radius:99px;transition:width .2s ease}}
+.analysis-entry button{{border:1px solid #e2e8f0;background:#f8fafc;border-radius:10px;padding:12px;font-weight:700;color:#475569;cursor:pointer;font-size:13px}}
+.profit-bar{{height:6px;background:#f1f5f9;border-radius:99px;overflow:hidden;margin-top:6px}}
+.profit-fill{{height:6px;border-radius:99px;transition:width .3s ease}}
 details summary{{cursor:pointer;list-style:none;user-select:none}}
 details summary::-webkit-details-marker{{display:none}}
-details summary::before{{content:"▶ ";font-size:10px;color:#aaa}}
+details summary::before{{content:"▶ ";font-size:10px;color:#94a3b8}}
 details[open] summary::before{{content:"▼ ";}}
 @media(max-width:620px){{
   body{{padding:8px}}
@@ -1175,6 +1180,7 @@ details[open] summary::before{{content:"▼ ";}}
   .position-head{{display:block}}
   .position-pnl{{text-align:left;margin-top:6px}}
   .stat-val{{font-size:20px}}
+  .metric-value{{font-size:22px}}
   td:nth-child(4){{display:none}}
 }}
 </style>
@@ -1772,13 +1778,15 @@ function renderTracker() {{
   var monthKey = new Date().toISOString().slice(0,7);
   var monthlyPnl = 0;
   positions.forEach(function(p){{ if (p.status === 'closed' && p.transactions.some(function(tx){{return trackerMonthKey(tx.trade_date) === monthKey;}})) monthlyPnl += p.realized_pnl; }});
-  if (cashDetail) cashDetail.innerHTML = '<div style="font-size:12px;color:#888;margin:-4px 0 12px">已實現 '+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+' ｜ 未實現 '+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+' ｜ 可用現金 '+trackerMoney(summaryData.availableCash)+'</div>';
+  if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>已實現 <b style="color:'+(summaryData.realized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</b></span><span>未實現 <b style="color:'+(summaryData.unrealized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span></div>';
+  var monthColor = monthlyPnl>0?'#16a34a':monthlyPnl<0?'#dc2626':'#64748b';
+  var pnlColorNew = summaryData.totalPnl>0?'#16a34a':summaryData.totalPnl<0?'#dc2626':'#64748b';
   summary.innerHTML =
     '<div class="tracker-main-grid">' +
-    '<div class="metric-card primary"><div class="metric-label">總資產</div><div class="metric-value" style="color:#333">'+trackerMoney(totalAssets)+'</div><div class="metric-note">可用現金 + 持倉市值</div></div>' +
-    '<div class="metric-card primary"><div class="metric-label">總損益</div><div class="metric-value" style="color:'+pnlColor+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="metric-note">已實現 + 未實現</div></div>' +
-    '<div class="metric-card primary"><div class="metric-label">總報酬率</div><div class="metric-value" style="color:'+pnlColor+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="metric-note">以投入本金計算</div></div>' +
-    '<div class="metric-card primary"><div class="metric-label">本月損益</div><div class="metric-value" style="color:'+(monthlyPnl>0?'#27ae60':monthlyPnl<0?'#e74c3c':'#555')+'">'+(monthlyPnl>0?'+':'')+trackerMoney(monthlyPnl)+'</div><div class="metric-note">已完成交易估算</div></div>' +
+    '<div class="metric-card primary" style="--accent:#3b82f6"><div class="metric-label">總資產</div><div class="metric-value" style="color:#0f172a">'+trackerMoney(totalAssets)+'</div><div class="metric-note">可用現金 + 持倉市值</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">總損益</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="metric-note">已實現 + 未實現</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">總報酬率</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="metric-note">以投入本金計算</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+monthColor+'"><div class="metric-label">本月損益</div><div class="metric-value" style="color:'+monthColor+'">'+(monthlyPnl>0?'+':'')+trackerMoney(monthlyPnl)+'</div><div class="metric-note">本月已完成交易</div></div>' +
     '</div>';
   var points = trackerBuildEquityPoints(rows, summaryData);
   var tabs = [['7','7天'],['30','30天'],['90','90天'],['all','全部']].map(function(r){{return '<button class="'+(trackerChartRange===r[0]?'active':'')+'" data-tracker-action="chart-range" data-range="'+r[0]+'">'+r[1]+'</button>';}}).join('');
@@ -1788,28 +1796,28 @@ function renderTracker() {{
     '<div class="chart-card" style="grid-column:1/-1"><div class="chart-title">每月損益</div>'+trackerMonthlyBars(positions)+'</div>' +
     '</section>';
   var holdingHtml = openPositions.length ? '<div class="holding-list">' + openPositions.map(function(p) {{
-    var color = p.unrealized_pnl > 0 ? '#27ae60' : p.unrealized_pnl < 0 ? '#e74c3c' : '#555';
+    var color = p.unrealized_pnl > 0 ? '#16a34a' : p.unrealized_pnl < 0 ? '#dc2626' : '#64748b';
     return '<div class="holding-row"><div><b>'+trackerEscape(p.name || p.symbol)+'</b><div class="holding-cell">'+trackerEscape(p.symbol)+'｜'+trackerWarrantLabel(p.warrant_type)+'</div></div>' +
       '<div class="holding-cell">平均成本<strong>'+trackerPrice(p.average_cost)+'</strong></div>' +
       '<div class="holding-cell">現價<strong>'+trackerPrice(p.current_price)+'</strong></div>' +
       '<div class="holding-cell">未實現損益<strong style="color:'+color+'">'+(p.unrealized_pnl>0?'+':'')+trackerMoney(p.unrealized_pnl)+'</strong></div>' +
       '<div class="holding-cell">報酬率<strong style="color:'+color+'">'+(p.unrealized_return_pct>0?'+':'')+p.unrealized_return_pct.toFixed(2)+'%</strong></div></div>';
-  }}).join('') + '</div>' : '<p style="color:#aaa;padding:10px 0">目前沒有持倉。</p>';
+  }}).join('') + '</div>' : '<p style="color:#94a3b8;padding:10px 0">目前沒有持倉。</p>';
   var sortedRows = rows.slice().sort(function(a,b){{return String(b.trade_date||'').localeCompare(String(a.trade_date||'')) || String(b.created_at||'').localeCompare(String(a.created_at||''));}});
   var recentRows = sortedRows.slice(0,5).map(function(tx) {{
     var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
-    var sideColor = tx.side === 'sell' ? '#e67e22' : '#1f5f99';
-    return '<div class="recent-row"><div style="color:#888">'+trackerEscape(tx.trade_date)+'</div><div><b>'+trackerEscape(tx.name || tx.symbol)+'</b><div style="font-size:11px;color:#999">'+trackerEscape(tx.symbol)+'｜預設帳戶</div></div><div style="color:'+sideColor+';font-weight:800">'+(tx.side === 'sell' ? '賣出' : '買進')+'</div><div style="text-align:right">'+trackerPrice(tx.price)+' × '+trackerMoney(tx.quantity)+'<br><span style="color:#999">'+trackerMoney(gross)+'</span></div></div>';
+    var sideColor = tx.side === 'sell' ? '#ea580c' : '#1d4ed8';
+    return '<div class="recent-row"><div style="color:#94a3b8">'+trackerEscape(tx.trade_date)+'</div><div><b>'+trackerEscape(tx.name || tx.symbol)+'</b><div style="font-size:11px;color:#94a3b8">'+trackerEscape(tx.symbol)+'｜預設帳戶</div></div><div style="color:'+sideColor+';font-weight:800">'+(tx.side === 'sell' ? '賣出' : '買進')+'</div><div style="text-align:right">'+trackerPrice(tx.price)+' × '+trackerMoney(tx.quantity)+'<br><span style="color:#94a3b8">'+trackerMoney(gross)+'</span></div></div>';
   }}).join('');
   var allRows = sortedRows.slice(5).map(function(tx) {{
     var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
-    var sideColor = tx.side === 'sell' ? '#e67e22' : '#1f5f99';
-    return '<div class="recent-row"><div style="color:#888">'+trackerEscape(tx.trade_date)+'</div><div><b>'+trackerEscape(tx.name || tx.symbol)+'</b><div style="font-size:11px;color:#999">'+trackerEscape(tx.symbol)+'｜預設帳戶</div></div><div style="color:'+sideColor+';font-weight:800">'+(tx.side === 'sell' ? '賣出' : '買進')+'</div><div style="text-align:right">'+trackerPrice(tx.price)+' × '+trackerMoney(tx.quantity)+'<br><span style="color:#999">'+trackerMoney(gross)+'</span></div></div>';
+    var sideColor = tx.side === 'sell' ? '#ea580c' : '#1d4ed8';
+    return '<div class="recent-row"><div style="color:#94a3b8">'+trackerEscape(tx.trade_date)+'</div><div><b>'+trackerEscape(tx.name || tx.symbol)+'</b><div style="font-size:11px;color:#94a3b8">'+trackerEscape(tx.symbol)+'｜預設帳戶</div></div><div style="color:'+sideColor+';font-weight:800">'+(tx.side === 'sell' ? '賣出' : '買進')+'</div><div style="text-align:right">'+trackerPrice(tx.price)+' × '+trackerMoney(tx.quantity)+'<br><span style="color:#94a3b8">'+trackerMoney(gross)+'</span></div></div>';
   }}).join('');
-  var recentHtml = rows.length ? '<div class="recent-list">'+recentRows+'</div>' + (rows.length>5 ? '<div id="ledger-extra" class="ledger-extra recent-list" style="margin-top:6px">'+allRows+'</div><button id="ledger-toggle" class="tracker-secondary" data-tracker-action="toggle-ledger" style="margin-top:8px">查看全部</button>' : '') : '<p style="color:#aaa;padding:10px 0">尚無交易紀錄。</p>';
+  var recentHtml = rows.length ? '<div class="recent-list">'+recentRows+'</div>' + (rows.length>5 ? '<div id="ledger-extra" class="ledger-extra recent-list" style="margin-top:6px">'+allRows+'</div><button id="ledger-toggle" class="tracker-secondary" data-tracker-action="toggle-ledger" style="margin-top:8px">查看全部</button>' : '') : '<p style="color:#94a3b8;padding:10px 0">尚無交易紀錄。</p>';
   body.innerHTML = '<div class="returns-dashboard">' + chartHtml +
-    '<section><h3 style="font-size:16px;margin:2px 0 8px">目前持倉摘要</h3>'+holdingHtml+'</section>' +
-    '<section><h3 style="font-size:16px;margin:2px 0 8px">最近交易</h3>'+recentHtml+'</section>' +
+    '<section><div class="section-label">目前持倉摘要</div>'+holdingHtml+'</section>' +
+    '<section><div class="section-label">最近交易</div>'+recentHtml+'</section>' +
     '</div>';
 }}
 document.addEventListener('DOMContentLoaded', function() {{
