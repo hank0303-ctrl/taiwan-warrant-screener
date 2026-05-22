@@ -1147,12 +1147,43 @@ function trackerLoad() {{
 function trackerSave(rows) {{
   localStorage.setItem('twReturnTracker', JSON.stringify(rows));
 }}
+function trackerLoadBudget() {{
+  var v = parseFloat(localStorage.getItem('twReturnBudget') || '10000');
+  return isNaN(v) || v < 0 ? 10000 : v;
+}}
+function trackerSaveBudget() {{
+  var el = document.getElementById('rt-budget');
+  var v = el ? parseFloat(el.value) : trackerLoadBudget();
+  if (isNaN(v) || v < 0) v = 0;
+  localStorage.setItem('twReturnBudget', String(v));
+  renderTracker();
+}}
 function trackerNum(id) {{
   var v = parseFloat(document.getElementById(id).value);
   return isNaN(v) ? 0 : v;
 }}
+function trackerText(id) {{
+  var el = document.getElementById(id);
+  return el ? el.value.trim() : '';
+}}
+function trackerEscape(text) {{
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}}
+function resetTradeForm() {{
+  ['rt-code','rt-name','rt-buy','rt-current','rt-qty','rt-note'].forEach(function(id){{document.getElementById(id).value='';}});
+  document.getElementById('rt-edit-id').value = '';
+  document.getElementById('rt-submit').textContent = '新增紀錄';
+  document.getElementById('rt-cancel-edit').style.display = 'none';
+  var d = document.getElementById('rt-date');
+  if (d) d.value = new Date().toISOString().slice(0,10);
+}}
 function addTradeRecord() {{
-  var code = document.getElementById('rt-code').value.trim();
+  var code = trackerText('rt-code');
   var buy = trackerNum('rt-buy');
   var current = trackerNum('rt-current');
   var qty = trackerNum('rt-qty');
@@ -1161,24 +1192,50 @@ function addTradeRecord() {{
     return;
   }}
   var rows = trackerLoad();
-  rows.push({{
-    id: Date.now(),
+  var editId = parseInt(document.getElementById('rt-edit-id').value || '0', 10);
+  var record = {{
+    id: editId || Date.now(),
     type: document.getElementById('rt-type').value,
     code: code,
-    name: document.getElementById('rt-name').value.trim(),
+    name: trackerText('rt-name'),
     buy: buy,
     current: current,
     qty: qty,
     source: document.getElementById('rt-source').value,
-    note: document.getElementById('rt-note').value.trim(),
+    note: trackerText('rt-note'),
     date: document.getElementById('rt-date').value || new Date().toISOString().slice(0,10)
-  }});
+  }};
+  if (editId) {{
+    var updated = false;
+    rows = rows.map(function(r){{ if (r.id === editId) {{ updated = true; return record; }} return r; }});
+    if (!updated) rows.push(record);
+  }} else {{
+    rows.push(record);
+  }}
   trackerSave(rows);
-  ['rt-code','rt-name','rt-buy','rt-current','rt-qty','rt-note'].forEach(function(id){{document.getElementById(id).value='';}});
+  resetTradeForm();
   renderTracker();
+}}
+function editTradeRecord(id) {{
+  var row = trackerLoad().find(function(r){{return r.id === id;}});
+  if (!row) return;
+  document.getElementById('rt-edit-id').value = row.id;
+  document.getElementById('rt-type').value = row.type || '權證';
+  document.getElementById('rt-code').value = row.code || '';
+  document.getElementById('rt-name').value = row.name || '';
+  document.getElementById('rt-buy').value = row.buy || '';
+  document.getElementById('rt-current').value = row.current || '';
+  document.getElementById('rt-qty').value = row.qty || '';
+  document.getElementById('rt-source').value = row.source || '自行判斷';
+  document.getElementById('rt-date').value = row.date || new Date().toISOString().slice(0,10);
+  document.getElementById('rt-note').value = row.note || '';
+  document.getElementById('rt-submit').textContent = '儲存修改';
+  document.getElementById('rt-cancel-edit').style.display = 'inline-block';
+  document.getElementById('rt-code').focus();
 }}
 function deleteTradeRecord(id) {{
   trackerSave(trackerLoad().filter(function(r){{return r.id !== id;}}));
+  if (parseInt(document.getElementById('rt-edit-id').value || '0', 10) === id) resetTradeForm();
   renderTracker();
 }}
 function clearTradeRecords() {{
@@ -1201,6 +1258,9 @@ function renderTracker() {{
   var summary = document.getElementById('tracker-summary');
   if (!body || !summary) return;
   var totalCost = 0, totalValue = 0, wins = 0;
+  var budget = trackerLoadBudget();
+  var budgetInput = document.getElementById('rt-budget');
+  if (budgetInput && budgetInput.value === '') budgetInput.value = budget;
   rows.forEach(function(r) {{
     totalCost += r.buy * r.qty;
     totalValue += r.current * r.qty;
@@ -1208,9 +1268,15 @@ function renderTracker() {{
   }});
   var pnl = totalValue - totalCost;
   var roi = totalCost > 0 ? pnl / totalCost * 100 : 0;
+  var remaining = budget - totalCost;
+  var usage = budget > 0 ? totalCost / budget * 100 : 0;
   summary.innerHTML =
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+budget.toFixed(0)+'</div><div class="stat-lbl">預計投入</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+totalCost.toFixed(0)+'</div><div class="stat-lbl">目前總成本</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(remaining>=0?'#555':'#e74c3c')+'">'+remaining.toFixed(0)+'</div><div class="stat-lbl">剩餘資金</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:'+(pnl>=0?'#27ae60':'#e74c3c')+'">'+(pnl>=0?'+':'')+pnl.toFixed(0)+'</div><div class="stat-lbl">總損益</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:'+(roi>=0?'#27ae60':'#e74c3c')+'">'+(roi>=0?'+':'')+roi.toFixed(2)+'%</div><div class="stat-lbl">總報酬率</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(usage>100?'#e74c3c':'#555')+'">'+usage.toFixed(0)+'%</div><div class="stat-lbl">資金使用率</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:#555">'+rows.length+'</div><div class="stat-lbl">紀錄筆數</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:#555">'+(rows.length ? Math.round(wins/rows.length*100) : 0)+'%</div><div class="stat-lbl">勝率</div></div>';
   if (!rows.length) {{
@@ -1225,13 +1291,20 @@ function renderTracker() {{
     var color = p >= 0 ? '#27ae60' : '#e74c3c';
     var icon = p >= 0 ? '▲' : '▼';
     var width = Math.min(100, Math.max(4, Math.abs(rr) * 3));
+    var code = trackerEscape(r.code);
+    var name = trackerEscape(r.name || '');
+    var type = trackerEscape(r.type || '');
+    var source = trackerEscape(r.source || '');
+    var date = trackerEscape(r.date || '');
+    var note = trackerEscape(r.note || '');
     return '<div style="border-top:1px solid #f0f0f0;padding:12px 0">' +
       '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">' +
-      '<div><b>'+r.code+' '+(r.name||'')+'</b> <span style="color:#777;font-size:12px">｜'+r.type+'｜'+r.source+'｜'+r.date+'</span><br>' +
+      '<div><b>'+code+' '+name+'</b> <span style="color:#777;font-size:12px">｜'+type+'｜'+source+'｜'+date+'</span><br>' +
       '<span style="font-size:12px;color:#777">買入 '+r.buy+'｜目前 <input value="'+r.current+'" onchange="updateTradeCurrent('+r.id+', this.value)" style="width:76px;border:1px solid #ddd;border-radius:6px;padding:3px 6px">｜數量 '+r.qty+'</span></div>' +
       '<div style="text-align:right;color:'+color+';font-weight:700;font-size:18px">'+icon+' '+(rr>=0?'+':'')+rr.toFixed(2)+'%<br><span style="font-size:12px">'+(p>=0?'+':'')+p.toFixed(0)+' 元</span></div>' +
       '</div><div class="profit-bar"><div class="profit-fill" style="width:'+width+'%;background:'+color+'"></div></div>' +
-      (r.note ? '<div style="font-size:12px;color:#777;margin-top:5px">備註：'+r.note+'</div>' : '') +
+      (note ? '<div style="font-size:12px;color:#777;margin-top:5px">備註：'+note+'</div>' : '') +
+      '<button onclick="editTradeRecord('+r.id+')" style="margin-top:7px;margin-right:6px;border:none;background:#16213e;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">修改</button>' +
       '<button onclick="deleteTradeRecord('+r.id+')" style="margin-top:7px;border:none;background:#f4f4f4;color:#777;border-radius:6px;padding:4px 8px;cursor:pointer">刪除</button>' +
       '</div>';
   }}).join('');
@@ -1240,6 +1313,8 @@ document.addEventListener('DOMContentLoaded', function() {{
   showTab(location.hash === '#warrants' ? 'warrants' : location.hash === '#returns' ? 'returns' : 'stocks');
   var d = document.getElementById('rt-date');
   if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  var b = document.getElementById('rt-budget');
+  if (b && !b.value) b.value = trackerLoadBudget();
   renderTracker();
 }});
 </script>
@@ -1306,7 +1381,13 @@ document.addEventListener('DOMContentLoaded', function() {{
   <div style="font-size:12px;color:#777;line-height:1.6;margin-bottom:12px">
     可填寫你實際買入的股票或權證，追蹤少量資金試單的實際報酬。買入來源可選「自行判斷」、「網頁評分篩選」、「推薦」。
   </div>
+  <div class="tracker-grid" style="margin-bottom:10px">
+    <label>預計投入資金
+      <input id="rt-budget" type="number" step="1000" value="10000" onchange="trackerSaveBudget()" placeholder="例如 10000">
+    </label>
+  </div>
   <div id="tracker-summary" class="stat-grid" style="margin-bottom:12px"></div>
+  <input id="rt-edit-id" type="hidden">
   <div class="tracker-grid">
     <label>類型
       <select id="rt-type">
@@ -1346,7 +1427,8 @@ document.addEventListener('DOMContentLoaded', function() {{
     </label>
   </div>
   <div class="tracker-actions">
-    <button onclick="addTradeRecord()" style="background:#16213e;color:#fff">新增紀錄</button>
+    <button id="rt-submit" onclick="addTradeRecord()" style="background:#16213e;color:#fff">新增紀錄</button>
+    <button id="rt-cancel-edit" onclick="resetTradeForm()" style="display:none;background:#f4f4f4;color:#777">取消修改</button>
     <button onclick="clearTradeRecords()" style="background:#f4f4f4;color:#777">清空紀錄</button>
   </div>
   <div id="tracker-body" style="margin-top:12px"></div>
