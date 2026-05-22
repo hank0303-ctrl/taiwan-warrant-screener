@@ -69,12 +69,98 @@ function showTab(tab) {
     panel.classList.toggle('active', panel.id === 'tab-' + tab);
   });
 }
+var TRACKER_LEDGER_KEY = 'twReturnLedger';
+var TRACKER_OLD_KEY = 'twReturnTracker';
+var TRACKER_BACKUP_KEY = 'twReturnTrackerBackupV1';
+var TRACKER_MIGRATED_KEY = 'twReturnLedgerMigratedV1';
+var TRACKER_PRICE_KEY = 'twReturnPrices';
+function trackerUid() {
+  return 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+function trackerLoadJson(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
+  catch(e) { return fallback; }
+}
+function trackerSaveJson(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+function trackerSourceValue(text) {
+  if (text === '網頁評分篩選' || text === 'screener') return 'screener';
+  if (text === '推薦' || text === 'recommendation') return 'recommendation';
+  return 'self';
+}
+function trackerSourceLabel(value) {
+  if (value === 'screener') return '網頁評分篩選';
+  if (value === 'recommendation') return '推薦';
+  return '自行判斷';
+}
+function trackerAssetValue(text) {
+  if (text === '股票' || text === 'stock') return 'stock';
+  return 'warrant';
+}
+function trackerAssetLabel(value) {
+  return value === 'stock' ? '股票' : '權證';
+}
+function trackerWarrantLabel(value) {
+  if (value === 'call') return '認購';
+  if (value === 'put') return '認售';
+  return '未分類';
+}
+function trackerPositionKey(tx) {
+  return [tx.account_id || 'default', tx.asset_type || 'warrant', tx.warrant_type || '', tx.symbol].join('|');
+}
+function trackerLoadPrices() {
+  return trackerLoadJson(TRACKER_PRICE_KEY, {});
+}
+function trackerSavePrices(prices) {
+  trackerSaveJson(TRACKER_PRICE_KEY, prices);
+}
+function trackerMigrateOldData() {
+  if (localStorage.getItem(TRACKER_MIGRATED_KEY) === '1') return;
+  var oldRaw = localStorage.getItem(TRACKER_OLD_KEY);
+  if (!oldRaw || localStorage.getItem(TRACKER_LEDGER_KEY)) {
+    localStorage.setItem(TRACKER_MIGRATED_KEY, '1');
+    return;
+  }
+  localStorage.setItem(TRACKER_BACKUP_KEY, oldRaw);
+  var oldRows = trackerLoadJson(TRACKER_OLD_KEY, []);
+  var prices = trackerLoadPrices();
+  var ledger = oldRows.map(function(r, idx) {
+    var side = (r.action || r.side) === 'sell' ? 'sell' : 'buy';
+    var assetType = trackerAssetValue(r.type || r.asset_type);
+    var tx = {
+      id: String(r.id || ('legacy_' + idx + '_' + Date.now())),
+      account_id: r.account_id || 'default',
+      asset_type: assetType,
+      warrant_type: r.warrant_type || null,
+      symbol: String(r.code || r.symbol || '').trim(),
+      name: r.name || '',
+      side: side,
+      price: side === 'sell' ? Number(r.current || r.price || 0) : Number(r.buy || r.price || 0),
+      quantity: Number(r.qty || r.quantity || 0),
+      trade_date: r.date || r.trade_date || new Date().toISOString().slice(0,10),
+      source: trackerSourceValue(r.source),
+      note: r.note || '',
+      fee: Number(r.fee || 0),
+      tax: Number(r.tax || 0),
+      other_cost: Number(r.other_cost || 0),
+      created_at: r.created_at || new Date().toISOString()
+    };
+    if (tx.symbol) {
+      prices[trackerPositionKey(tx)] = Number(r.current || tx.price || 0);
+    }
+    return tx;
+  }).filter(function(tx) { return tx.symbol && tx.price > 0 && tx.quantity > 0; });
+  trackerSaveJson(TRACKER_LEDGER_KEY, ledger);
+  trackerSavePrices(prices);
+  localStorage.setItem(TRACKER_MIGRATED_KEY, '1');
+}
 function trackerLoad() {
-  try { return JSON.parse(localStorage.getItem('twReturnTracker') || '[]'); }
-  catch(e) { return []; }
+  trackerMigrateOldData();
+  return trackerLoadJson(TRACKER_LEDGER_KEY, []);
 }
 function trackerSave(rows) {
-  localStorage.setItem('twReturnTracker', JSON.stringify(rows));
+  trackerSaveJson(TRACKER_LEDGER_KEY, rows);
 }
 function trackerLoadBudget() {
   var v = parseFloat(localStorage.getItem('twReturnBudget') || '10000');
@@ -88,7 +174,8 @@ function trackerSaveBudget() {
   renderTracker();
 }
 function trackerNum(id) {
-  var v = parseFloat(document.getElementById(id).value);
+  var el = document.getElementById(id);
+  var v = parseFloat(el ? el.value : '');
   return isNaN(v) ? 0 : v;
 }
 function trackerText(id) {
@@ -104,158 +191,319 @@ function trackerEscape(text) {
     .replace(/'/g, '&#039;');
 }
 function resetTradeForm() {
-  ['rt-code','rt-name','rt-buy','rt-current','rt-qty','rt-note'].forEach(function(id){document.getElementById(id).value='';});
+  ['rt-code','rt-name','rt-buy','rt-current','rt-qty','rt-note','rt-fee','rt-tax','rt-other-cost'].forEach(function(id){var el=document.getElementById(id); if(el) el.value='';});
   document.getElementById('rt-edit-id').value = '';
   document.getElementById('rt-action').value = 'buy';
+  document.getElementById('rt-type').value = 'warrant';
+  document.getElementById('rt-warrant-type').value = '';
+  document.getElementById('rt-source').value = 'self';
   document.getElementById('rt-submit').textContent = '新增紀錄';
   document.getElementById('rt-cancel-edit').style.display = 'none';
   var d = document.getElementById('rt-date');
   if (d) d.value = new Date().toISOString().slice(0,10);
 }
+function trackerBuildPositions(rows) {
+  var prices = trackerLoadPrices();
+  var map = {};
+  var ledger = rows.slice().sort(function(a, b) {
+    return String(a.trade_date || '').localeCompare(String(b.trade_date || '')) ||
+      String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+      String(a.id || '').localeCompare(String(b.id || ''));
+  });
+  ledger.forEach(function(tx) {
+    var key = trackerPositionKey(tx);
+    if (!map[key]) {
+      map[key] = {
+        key: key,
+        account_id: tx.account_id || 'default',
+        asset_type: tx.asset_type || 'warrant',
+        warrant_type: tx.warrant_type || null,
+        symbol: tx.symbol,
+        name: tx.name || '',
+        source: tx.source || 'self',
+        total_buy_quantity: 0,
+        total_sell_quantity: 0,
+        remaining_quantity: 0,
+        remaining_cost: 0,
+        realized_pnl: 0,
+        buy_spend: 0,
+        sell_income: 0,
+        transactions: []
+      };
+    }
+    var p = map[key];
+    var qty = Number(tx.quantity || 0);
+    var price = Number(tx.price || 0);
+    var costs = Number(tx.fee || 0) + Number(tx.tax || 0) + Number(tx.other_cost || 0);
+    var gross = price * qty;
+    p.name = tx.name || p.name;
+    p.source = tx.source || p.source;
+    p.transactions.push(tx);
+    if (tx.side === 'sell') {
+      var sellQty = Math.min(qty, p.remaining_quantity);
+      var avgBefore = p.remaining_quantity > 0 ? p.remaining_cost / p.remaining_quantity : 0;
+      var costRemoved = avgBefore * sellQty;
+      p.total_sell_quantity += sellQty;
+      p.remaining_quantity -= sellQty;
+      p.remaining_cost = Math.max(0, p.remaining_cost - costRemoved);
+      p.realized_pnl += (price * sellQty - costs) - costRemoved;
+      p.sell_income += gross - costs;
+    } else {
+      var buySpend = gross + costs;
+      p.total_buy_quantity += qty;
+      p.remaining_quantity += qty;
+      p.remaining_cost += buySpend;
+      p.buy_spend += buySpend;
+    }
+  });
+  return Object.keys(map).map(function(key) {
+    var p = map[key];
+    p.average_cost = p.remaining_quantity > 0 ? p.remaining_cost / p.remaining_quantity : 0;
+    p.current_price = Number(prices[key] || p.average_cost || 0);
+    p.market_value = p.remaining_quantity * p.current_price;
+    p.unrealized_pnl = (p.current_price - p.average_cost) * p.remaining_quantity;
+    p.total_pnl = p.realized_pnl + p.unrealized_pnl;
+    p.unrealized_return_pct = p.remaining_cost > 0 ? p.unrealized_pnl / p.remaining_cost * 100 : 0;
+    p.status = p.remaining_quantity > 0 ? 'open' : 'closed';
+    if (Math.abs(p.remaining_quantity) < 0.000001) {
+      p.remaining_quantity = 0;
+      p.remaining_cost = 0;
+      p.average_cost = 0;
+      p.market_value = 0;
+      p.unrealized_pnl = 0;
+    }
+    return p;
+  });
+}
+function trackerCalcSummary(rows, positions) {
+  var principal = trackerLoadBudget();
+  var buySpend = 0, sellIncome = 0, openCost = 0, marketValue = 0, realized = 0, unrealized = 0;
+  rows.forEach(function(tx) {
+    var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
+    var costs = Number(tx.fee || 0) + Number(tx.tax || 0) + Number(tx.other_cost || 0);
+    if (tx.side === 'sell') sellIncome += gross - costs;
+    else buySpend += gross + costs;
+  });
+  positions.forEach(function(p) {
+    if (p.status === 'open') {
+      openCost += p.remaining_cost;
+      marketValue += p.market_value;
+      unrealized += p.unrealized_pnl;
+    }
+    realized += p.realized_pnl;
+  });
+  var totalPnl = realized + unrealized;
+  return {
+    principal: principal,
+    availableCash: principal - buySpend + sellIncome,
+    openCost: Math.max(0, openCost),
+    marketValue: marketValue,
+    realized: realized,
+    unrealized: unrealized,
+    totalPnl: totalPnl,
+    returnPct: principal > 0 ? totalPnl / principal * 100 : 0,
+    usagePct: principal > 0 ? Math.max(0, openCost) / principal * 100 : 0,
+    openCount: positions.filter(function(p){return p.status === 'open';}).length,
+    closedCount: positions.filter(function(p){return p.status === 'closed' && p.total_buy_quantity > 0;}).length,
+    buySpend: buySpend,
+    sellIncome: sellIncome
+  };
+}
+function trackerFormTx() {
+  var side = document.getElementById('rt-action').value || 'buy';
+  var buyPrice = trackerNum('rt-buy');
+  var currentPrice = trackerNum('rt-current');
+  var price = side === 'sell' ? currentPrice : buyPrice;
+  return {
+    id: document.getElementById('rt-edit-id').value || trackerUid(),
+    account_id: 'default',
+    asset_type: document.getElementById('rt-type').value || 'warrant',
+    warrant_type: (document.getElementById('rt-type').value === 'warrant' ? (document.getElementById('rt-warrant-type').value || null) : null),
+    symbol: trackerText('rt-code'),
+    name: trackerText('rt-name'),
+    side: side,
+    price: price,
+    quantity: trackerNum('rt-qty'),
+    trade_date: document.getElementById('rt-date').value || new Date().toISOString().slice(0,10),
+    source: document.getElementById('rt-source').value || 'self',
+    note: trackerText('rt-note'),
+    fee: trackerNum('rt-fee'),
+    tax: trackerNum('rt-tax'),
+    other_cost: trackerNum('rt-other-cost'),
+    created_at: new Date().toISOString()
+  };
+}
 function addTradeRecord() {
-  var code = trackerText('rt-code');
-  var buy = trackerNum('rt-buy');
-  var current = trackerNum('rt-current');
-  var qty = trackerNum('rt-qty');
-  if (!code || buy <= 0 || current <= 0 || qty <= 0) {
-    alert('請至少填寫代號、買入價、目前價與數量');
+  var tx = trackerFormTx();
+  if (!tx.symbol || tx.price <= 0 || tx.quantity <= 0) {
+    alert('請至少填寫代號、交易價格與數量');
     return;
   }
   var rows = trackerLoad();
-  var editId = parseInt(document.getElementById('rt-edit-id').value || '0', 10);
-  var record = {
-    id: editId || Date.now(),
-    action: document.getElementById('rt-action').value || 'buy',
-    type: document.getElementById('rt-type').value,
-    code: code,
-    name: trackerText('rt-name'),
-    buy: buy,
-    current: current,
-    qty: qty,
-    source: document.getElementById('rt-source').value,
-    note: trackerText('rt-note'),
-    date: document.getElementById('rt-date').value || new Date().toISOString().slice(0,10)
-  };
+  var editId = document.getElementById('rt-edit-id').value;
+  if (editId) {
+    var existing = rows.find(function(r){return String(r.id) === String(editId);});
+    if (existing) tx.created_at = existing.created_at || tx.created_at;
+  }
+  if (tx.side === 'sell') {
+    var rowsForCheck = rows.filter(function(r){return String(r.id) !== String(editId);});
+    var available = 0;
+    trackerBuildPositions(rowsForCheck).forEach(function(p) {
+      if (p.key === trackerPositionKey(tx)) available = p.remaining_quantity;
+    });
+    if (tx.quantity > available) {
+      alert('賣出數量超過目前持有數量，請確認交易紀錄。');
+      return;
+    }
+  }
   if (editId) {
     var updated = false;
-    rows = rows.map(function(r){ if (r.id === editId) { updated = true; return record; } return r; });
-    if (!updated) rows.push(record);
+    rows = rows.map(function(r){ if (String(r.id) === String(editId)) { updated = true; return tx; } return r; });
+    if (!updated) rows.push(tx);
   } else {
-    rows.push(record);
+    rows.push(tx);
   }
+  var prices = trackerLoadPrices();
+  var currentHint = trackerNum('rt-current') || tx.price;
+  prices[trackerPositionKey(tx)] = currentHint;
+  trackerSavePrices(prices);
   trackerSave(rows);
   resetTradeForm();
   renderTracker();
 }
 function editTradeRecord(id) {
-  var row = trackerLoad().find(function(r){return r.id === id;});
+  var row = trackerLoad().find(function(r){return String(r.id) === String(id);});
   if (!row) return;
   document.getElementById('rt-edit-id').value = row.id;
-  document.getElementById('rt-action').value = row.action || 'buy';
-  document.getElementById('rt-type').value = row.type || '權證';
-  document.getElementById('rt-code').value = row.code || '';
+  document.getElementById('rt-action').value = row.side || 'buy';
+  document.getElementById('rt-type').value = row.asset_type || 'warrant';
+  document.getElementById('rt-warrant-type').value = row.warrant_type || '';
+  document.getElementById('rt-code').value = row.symbol || '';
   document.getElementById('rt-name').value = row.name || '';
-  document.getElementById('rt-buy').value = row.buy || '';
-  document.getElementById('rt-current').value = row.current || '';
-  document.getElementById('rt-qty').value = row.qty || '';
-  document.getElementById('rt-source').value = row.source || '自行判斷';
-  document.getElementById('rt-date').value = row.date || new Date().toISOString().slice(0,10);
+  document.getElementById('rt-buy').value = row.side === 'sell' ? '' : row.price;
+  document.getElementById('rt-current').value = row.side === 'sell' ? row.price : (trackerLoadPrices()[trackerPositionKey(row)] || row.price || '');
+  document.getElementById('rt-qty').value = row.quantity || '';
+  document.getElementById('rt-source').value = row.source || 'self';
+  document.getElementById('rt-date').value = row.trade_date || new Date().toISOString().slice(0,10);
+  document.getElementById('rt-fee').value = row.fee || '';
+  document.getElementById('rt-tax').value = row.tax || '';
+  document.getElementById('rt-other-cost').value = row.other_cost || '';
   document.getElementById('rt-note').value = row.note || '';
   document.getElementById('rt-submit').textContent = '儲存修改';
   document.getElementById('rt-cancel-edit').style.display = 'inline-block';
   document.getElementById('rt-code').focus();
 }
 function deleteTradeRecord(id) {
-  trackerSave(trackerLoad().filter(function(r){return r.id !== id;}));
-  if (parseInt(document.getElementById('rt-edit-id').value || '0', 10) === id) resetTradeForm();
+  trackerSave(trackerLoad().filter(function(r){return String(r.id) !== String(id);}));
+  if (String(document.getElementById('rt-edit-id').value || '') === String(id)) resetTradeForm();
   renderTracker();
 }
 function clearTradeRecords() {
   if (confirm('確定清空所有報酬追蹤紀錄？')) {
     trackerSave([]);
+    trackerSavePrices({});
     renderTracker();
   }
 }
 function updateTradeCurrent(id, value) {
+  updatePositionPrice(id, value);
+}
+function updatePositionPrice(key, value) {
   var current = parseFloat(value);
   if (isNaN(current) || current <= 0) return;
-  var rows = trackerLoad();
-  rows.forEach(function(r){ if (r.id === id) r.current = current; });
-  trackerSave(rows);
+  var prices = trackerLoadPrices();
+  prices[key] = current;
+  trackerSavePrices(prices);
   renderTracker();
+}
+function prefillTrade(key, side) {
+  var pos = trackerBuildPositions(trackerLoad()).find(function(p){return p.key === key;});
+  if (!pos) return;
+  document.getElementById('rt-edit-id').value = '';
+  document.getElementById('rt-action').value = side;
+  document.getElementById('rt-type').value = pos.asset_type;
+  document.getElementById('rt-warrant-type').value = pos.warrant_type || '';
+  document.getElementById('rt-code').value = pos.symbol;
+  document.getElementById('rt-name').value = pos.name || '';
+  document.getElementById('rt-buy').value = side === 'buy' ? (pos.current_price || pos.average_cost || '') : '';
+  document.getElementById('rt-current').value = pos.current_price || pos.average_cost || '';
+  document.getElementById('rt-qty').value = side === 'sell' ? pos.remaining_quantity : '';
+  document.getElementById('rt-source').value = pos.source || 'self';
+  document.getElementById('rt-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('rt-submit').textContent = '新增紀錄';
+  document.getElementById('rt-cancel-edit').style.display = 'none';
+  document.getElementById('rt-code').focus();
+}
+function trackerMoney(v) {
+  return Number(v || 0).toLocaleString('zh-TW', {maximumFractionDigits: 0});
+}
+function trackerPrice(v) {
+  return Number(v || 0).toLocaleString('zh-TW', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 function renderTracker() {
   var rows = trackerLoad();
   var body = document.getElementById('tracker-body');
   var summary = document.getElementById('tracker-summary');
   if (!body || !summary) return;
-  var totalCost = 0, totalValue = 0, totalPnl = 0, realizedPnl = 0, wins = 0;
-  var budget = trackerLoadBudget();
   var budgetInput = document.getElementById('rt-budget');
-  if (budgetInput && budgetInput.value === '') budgetInput.value = budget;
-  rows.forEach(function(r) {
-    var action = r.action || 'buy';
-    var entry = r.buy * r.qty;
-    var exitValue = r.current * r.qty;
-    var rowPnl = exitValue - entry;
-    if (action === 'sell') {
-      totalCost -= exitValue;
-      realizedPnl += rowPnl;
-      totalPnl += rowPnl;
-    } else {
-      totalCost += entry;
-      totalValue += exitValue;
-      totalPnl += rowPnl;
-    }
-    if (rowPnl >= 0) wins += 1;
-  });
-  var pnl = totalPnl;
-  var roiBase = rows.reduce(function(sum, r){ return sum + ((r.action || 'buy') === 'buy' ? r.buy * r.qty : 0); }, 0);
-  var roi = roiBase > 0 ? pnl / roiBase * 100 : 0;
-  var remaining = budget - totalCost;
-  var usage = budget > 0 ? totalCost / budget * 100 : 0;
+  if (budgetInput && budgetInput.value === '') budgetInput.value = trackerLoadBudget();
+  var positions = trackerBuildPositions(rows);
+  var openPositions = positions.filter(function(p){return p.status === 'open';});
+  var summaryData = trackerCalcSummary(rows, positions);
   summary.innerHTML =
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+budget.toFixed(0)+'</div><div class="stat-lbl">預計投入</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+totalCost.toFixed(0)+'</div><div class="stat-lbl">目前總成本</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(remaining>=0?'#555':'#e74c3c')+'">'+remaining.toFixed(0)+'</div><div class="stat-lbl">剩餘資金</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(pnl>=0?'#27ae60':'#e74c3c')+'">'+(pnl>=0?'+':'')+pnl.toFixed(0)+'</div><div class="stat-lbl">總損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(realizedPnl>=0?'#27ae60':'#e74c3c')+'">'+(realizedPnl>=0?'+':'')+realizedPnl.toFixed(0)+'</div><div class="stat-lbl">已實現損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(roi>=0?'#27ae60':'#e74c3c')+'">'+(roi>=0?'+':'')+roi.toFixed(2)+'%</div><div class="stat-lbl">總報酬率</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(usage>100?'#e74c3c':'#555')+'">'+usage.toFixed(0)+'%</div><div class="stat-lbl">資金使用率</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+rows.length+'</div><div class="stat-lbl">紀錄筆數</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+(rows.length ? Math.round(wins/rows.length*100) : 0)+'%</div><div class="stat-lbl">勝率</div></div>';
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.principal)+'</div><div class="stat-lbl">累計投入本金</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.availableCash>=0?'#555':'#e74c3c')+'">'+trackerMoney(summaryData.availableCash)+'</div><div class="stat-lbl">可用資金</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.openCost)+'</div><div class="stat-lbl">目前持倉成本</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.marketValue)+'</div><div class="stat-lbl">持倉市值</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.realized>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.realized>=0?'+':'')+trackerMoney(summaryData.realized)+'</div><div class="stat-lbl">已實現損益</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.unrealized>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.unrealized>=0?'+':'')+trackerMoney(summaryData.unrealized)+'</div><div class="stat-lbl">未實現損益</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.totalPnl>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.totalPnl>=0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="stat-lbl">總損益</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.returnPct>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.returnPct>=0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="stat-lbl">整體資金報酬率</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.usagePct.toFixed(1)+'%</div><div class="stat-lbl">目前資金使用率</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.openCount+'</div><div class="stat-lbl">開放持倉數</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.closedCount+'</div><div class="stat-lbl">已完成交易數</div></div>';
   if (!rows.length) {
-    body.innerHTML = '<p style="color:#aaa;padding:10px 0">尚未新增紀錄。可以先用少量資金試單，再把買入價與目前價填進來追蹤實際報酬。</p>';
+    body.innerHTML = '<h3 style="font-size:16px;margin:14px 0 8px">B. 目前持倉</h3><p style="color:#aaa;padding:10px 0">尚未新增交易。可以先用少量資金試單，再把買進或賣出交易填進來追蹤實際報酬。</p><h3 style="font-size:16px;margin:14px 0 8px">C. 交易流水帳</h3><p style="color:#aaa;padding:10px 0">尚無交易流水帳。</p>';
     return;
   }
-  body.innerHTML = rows.map(function(r) {
-    var cost = r.buy * r.qty;
-    var value = r.current * r.qty;
-    var p = value - cost;
-    var rr = cost > 0 ? p / cost * 100 : 0;
-    var action = r.action || 'buy';
-    var actionLabel = action === 'sell' ? '賣出' : '買入';
-    var actionColor = action === 'sell' ? '#e67e22' : '#1f5f99';
-    var color = p >= 0 ? '#27ae60' : '#e74c3c';
-    var icon = p >= 0 ? '▲' : '▼';
-    var width = Math.min(100, Math.max(4, Math.abs(rr) * 3));
-    var code = trackerEscape(r.code);
-    var name = trackerEscape(r.name || '');
-    var type = trackerEscape(r.type || '');
-    var source = trackerEscape(r.source || '');
-    var date = trackerEscape(r.date || '');
-    var note = trackerEscape(r.note || '');
-    return '<div style="border-top:1px solid #f0f0f0;padding:12px 0">' +
-      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">' +
-      '<div><b>'+code+' '+name+'</b> <span style="background:'+actionColor+';color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;margin-left:4px">'+actionLabel+'</span> <span style="color:#777;font-size:12px">｜'+type+'｜'+source+'｜'+date+'</span><br>' +
-      '<span style="font-size:12px;color:#777">成本 '+r.buy+'｜'+(action === 'sell' ? '賣出' : '目前')+' <input value="'+r.current+'" onchange="updateTradeCurrent('+r.id+', this.value)" style="width:76px;border:1px solid #ddd;border-radius:6px;padding:3px 6px">｜數量 '+r.qty+'｜'+(action === 'sell' ? '扣減成本 ' : '投入成本 ')+(action === 'sell' ? '-'+value.toFixed(0) : cost.toFixed(0))+' 元</span></div>' +
-      '<div style="text-align:right;color:'+color+';font-weight:700;font-size:18px">'+icon+' '+(rr>=0?'+':'')+rr.toFixed(2)+'%<br><span style="font-size:12px">'+(p>=0?'+':'')+p.toFixed(0)+' 元</span></div>' +
-      '</div><div class="profit-bar"><div class="profit-fill" style="width:'+width+'%;background:'+color+'"></div></div>' +
-      (note ? '<div style="font-size:12px;color:#777;margin-top:5px">備註：'+note+'</div>' : '') +
-      '<button onclick="editTradeRecord('+r.id+')" style="margin-top:7px;margin-right:6px;border:none;background:#16213e;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">修改</button>' +
-      '<button onclick="deleteTradeRecord('+r.id+')" style="margin-top:7px;border:none;background:#f4f4f4;color:#777;border-radius:6px;padding:4px 8px;cursor:pointer">刪除</button>' +
+  var positionHtml = openPositions.length ? openPositions.map(function(p) {
+    var color = p.total_pnl >= 0 ? '#27ae60' : '#e74c3c';
+    var txRows = p.transactions.map(function(tx) {
+      var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
+      return '<tr><td>'+trackerEscape(tx.trade_date)+'</td><td>'+trackerEscape(tx.side === 'sell' ? '賣出' : '買進')+'</td><td>'+trackerPrice(tx.price)+'</td><td>'+trackerMoney(tx.quantity)+'</td><td>'+trackerMoney(gross)+'</td></tr>';
+    }).join('');
+    return '<div style="border-top:1px solid #eee;padding:12px 0">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+      '<div><b>'+trackerEscape(p.symbol)+' '+trackerEscape(p.name || '')+'</b> <span style="color:#777;font-size:12px">｜'+trackerAssetLabel(p.asset_type)+'｜'+trackerWarrantLabel(p.warrant_type)+'｜'+trackerSourceLabel(p.source)+'</span><br>' +
+      '<span style="font-size:12px;color:#777">累計買進 '+trackerMoney(p.total_buy_quantity)+'｜已賣出 '+trackerMoney(p.total_sell_quantity)+'｜剩餘 '+trackerMoney(p.remaining_quantity)+'｜平均成本 '+trackerPrice(p.average_cost)+'</span></div>' +
+      '<div style="text-align:right;color:'+color+';font-weight:700">總損益 '+(p.total_pnl>=0?'+':'')+trackerMoney(p.total_pnl)+'<br><span style="font-size:12px;color:#777">未實現 '+(p.unrealized_pnl>=0?'+':'')+trackerMoney(p.unrealized_pnl)+'</span></div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#777;margin-top:6px">目前價格 <input value="'+trackerPrice(p.current_price)+'" onchange="updatePositionPrice(\''+p.key+'\', this.value)" style="width:82px;border:1px solid #ddd;border-radius:6px;padding:3px 6px">｜持倉成本 '+trackerMoney(p.remaining_cost)+'｜市值 '+trackerMoney(p.market_value)+'｜已實現 '+(p.realized_pnl>=0?'+':'')+trackerMoney(p.realized_pnl)+'</div>' +
+      '<div class="tracker-actions" style="margin-top:7px"><button onclick="prefillTrade(\''+p.key+'\', \'buy\')" style="background:#16213e;color:#fff">新增買進</button><button onclick="prefillTrade(\''+p.key+'\', \'sell\')" style="background:#e67e22;color:#fff">新增賣出</button></div>' +
+      '<details style="margin-top:7px"><summary style="cursor:pointer;color:#1f5f99;font-size:12px">展開查看交易明細</summary><div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px"><thead><tr><th>日期</th><th>方向</th><th>價格</th><th>數量</th><th>金額</th></tr></thead><tbody>'+txRows+'</tbody></table></div></details>' +
       '</div>';
+  }).join('') : '<p style="color:#aaa;padding:10px 0">目前沒有開放持倉。</p>';
+  var ledgerHtml = rows.slice().sort(function(a,b){return String(b.trade_date||'').localeCompare(String(a.trade_date||''));}).map(function(tx) {
+    var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
+    var costs = Number(tx.fee || 0) + Number(tx.tax || 0) + Number(tx.other_cost || 0);
+    var sideColor = tx.side === 'sell' ? '#e67e22' : '#1f5f99';
+    return '<tr style="border-top:1px solid #f2f2f2">' +
+      '<td style="padding:7px">'+trackerEscape(tx.trade_date)+'</td>' +
+      '<td style="padding:7px"><b>'+trackerEscape(tx.symbol)+' '+trackerEscape(tx.name || '')+'</b><br><span style="font-size:11px;color:#777">'+trackerAssetLabel(tx.asset_type)+'｜'+trackerWarrantLabel(tx.warrant_type)+'</span></td>' +
+      '<td style="padding:7px"><span style="background:'+sideColor+';color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">'+(tx.side === 'sell' ? '賣出' : '買進')+'</span></td>' +
+      '<td style="padding:7px;text-align:right">'+trackerPrice(tx.price)+'</td>' +
+      '<td style="padding:7px;text-align:right">'+trackerMoney(tx.quantity)+'</td>' +
+      '<td style="padding:7px;text-align:right">'+trackerMoney(gross)+'</td>' +
+      '<td style="padding:7px;text-align:right">'+trackerMoney(tx.fee || 0)+'</td>' +
+      '<td style="padding:7px;text-align:right">'+trackerMoney(tx.tax || 0)+'</td>' +
+      '<td style="padding:7px">'+trackerSourceLabel(tx.source)+'<br><span style="font-size:11px;color:#777">'+trackerEscape(tx.note || '')+'</span></td>' +
+      '<td style="padding:7px;white-space:nowrap"><button onclick="editTradeRecord(\''+tx.id+'\')" style="border:none;background:#16213e;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">修改</button> <button onclick="deleteTradeRecord(\''+tx.id+'\')" style="border:none;background:#f4f4f4;color:#777;border-radius:6px;padding:4px 8px;cursor:pointer">刪除</button></td>' +
+      '</tr>';
   }).join('');
+  body.innerHTML =
+    '<h3 style="font-size:16px;margin:14px 0 8px">B. 目前持倉</h3>' + positionHtml +
+    '<h3 style="font-size:16px;margin:16px 0 8px">C. 交易流水帳</h3>' +
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f8f8f8;color:#777"><th style="padding:7px">交易日期</th><th style="padding:7px">商品</th><th style="padding:7px">方向</th><th style="padding:7px;text-align:right">價格</th><th style="padding:7px;text-align:right">數量</th><th style="padding:7px;text-align:right">交易金額</th><th style="padding:7px;text-align:right">手續費</th><th style="padding:7px;text-align:right">稅金</th><th style="padding:7px">來源 / 備註</th><th style="padding:7px">操作</th></tr></thead><tbody>'+ledgerHtml+'</tbody></table></div>';
 }
 document.addEventListener('DOMContentLoaded', function() {
   showTab(location.hash === '#warrants' ? 'warrants' : location.hash === '#returns' ? 'returns' : 'stocks');
@@ -1258,20 +1506,28 @@ document.addEventListener('DOMContentLoaded', function() {
     <span style="font-size:11px;font-weight:normal;color:#aaa">資料只存在你的瀏覽器，不會上傳</span>
   </div>
   <div style="font-size:12px;color:#777;line-height:1.6;margin-bottom:12px">
-    可填寫你實際買入的股票或權證，追蹤少量資金試單的實際報酬。買入來源可選「自行判斷」、「網頁評分篩選」、「推薦」。
+    以交易流水帳自動彙總目前持倉，支援分批買進、分批賣出與手動費用。資料只存在你的瀏覽器。
   </div>
   <div class="tracker-grid" style="margin-bottom:10px">
-    <label>預計投入資金
+    <label>累計投入本金
       <input id="rt-budget" type="number" step="1000" value="10000" onchange="trackerSaveBudget()" placeholder="例如 10000">
     </label>
   </div>
+  <h3 style="font-size:16px;margin:10px 0 8px">A. 績效總覽</h3>
   <div id="tracker-summary" class="stat-grid" style="margin-bottom:12px"></div>
   <input id="rt-edit-id" type="hidden">
   <div class="tracker-grid">
     <label>類型
       <select id="rt-type">
-        <option>權證</option>
-        <option>股票</option>
+        <option value="warrant">權證</option>
+        <option value="stock">股票</option>
+      </select>
+    </label>
+    <label>權證類型
+      <select id="rt-warrant-type">
+        <option value="">未分類</option>
+        <option value="call">認購</option>
+        <option value="put">認售</option>
       </select>
     </label>
     <label>交易方向
@@ -1286,24 +1542,33 @@ document.addEventListener('DOMContentLoaded', function() {
     <label>名稱
       <input id="rt-name" placeholder="可不填">
     </label>
-    <label>買入 / 成本價
+    <label>買入價
       <input id="rt-buy" type="number" step="0.01" placeholder="例如 1.25">
     </label>
-    <label>目前 / 賣出價
-      <input id="rt-current" type="number" step="0.01" placeholder="例如 1.38">
+    <label>目前價 / 賣出價
+      <input id="rt-current" type="number" step="0.01" placeholder="買入可填目前價，賣出填賣出價">
     </label>
     <label>數量
       <input id="rt-qty" type="number" step="1" placeholder="股數 / 張數">
     </label>
     <label>買入來源
       <select id="rt-source">
-        <option>自行判斷</option>
-        <option>網頁評分篩選</option>
-        <option>推薦</option>
+        <option value="self">自行判斷</option>
+        <option value="screener">網頁評分篩選</option>
+        <option value="recommendation">推薦</option>
       </select>
     </label>
     <label>交易日期
       <input id="rt-date" type="date">
+    </label>
+    <label>手續費
+      <input id="rt-fee" type="number" step="1" placeholder="可填 0">
+    </label>
+    <label>交易稅
+      <input id="rt-tax" type="number" step="1" placeholder="可填 0">
+    </label>
+    <label>其他成本
+      <input id="rt-other-cost" type="number" step="1" placeholder="可填 0">
     </label>
   </div>
   <div class="tracker-grid" style="margin-top:10px">
