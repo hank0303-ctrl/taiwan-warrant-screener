@@ -85,13 +85,19 @@ function trackerSaveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 function trackerSourceValue(text) {
-  if (text === '網頁評分篩選' || text === 'screener') return 'screener';
+  if (text === '股票雷達' || text === 'stock_radar') return 'stock_radar';
+  if (text === '網頁評分篩選' || text === '權證篩選' || text === 'screener') return 'screener';
+  if (text === '事件交易' || text === 'event') return 'event';
   if (text === '推薦' || text === 'recommendation') return 'recommendation';
+  if (text === '其他' || text === 'other') return 'other';
   return 'self';
 }
 function trackerSourceLabel(value) {
+  if (value === 'stock_radar') return '股票雷達';
   if (value === 'screener') return '網頁評分篩選';
+  if (value === 'event') return '事件交易';
   if (value === 'recommendation') return '推薦';
+  if (value === 'other') return '其他';
   return '自行判斷';
 }
 function trackerAssetValue(text) {
@@ -204,7 +210,7 @@ function trackerEscape(text) {
     .replace(/'/g, '&#039;');
 }
 function resetTradeForm() {
-  ['rt-code','rt-name','rt-buy','rt-current','rt-qty','rt-note','rt-fee','rt-tax','rt-other-cost'].forEach(function(id){var el=document.getElementById(id); if(el) el.value='';});
+  ['rt-code','rt-name','rt-price','rt-qty','rt-note','rt-fee','rt-tax','rt-other-cost','rt-strategy','rt-stop-loss','rt-take-profit'].forEach(function(id){var el=document.getElementById(id); if(el) el.value='';});
   document.getElementById('rt-edit-id').value = '';
   document.getElementById('rt-action').value = 'buy';
   document.getElementById('rt-type').value = 'warrant';
@@ -214,6 +220,34 @@ function resetTradeForm() {
   document.getElementById('rt-cancel-edit').style.display = 'none';
   var d = document.getElementById('rt-date');
   if (d) d.value = new Date().toISOString().slice(0,10);
+}
+function openTradeModal(title) {
+  var modal = document.getElementById('trade-modal');
+  var titleEl = document.getElementById('trade-modal-title');
+  if (titleEl) titleEl.textContent = title || '新增交易';
+  if (modal) modal.classList.add('open');
+}
+function closeTradeModal() {
+  var modal = document.getElementById('trade-modal');
+  if (modal) modal.classList.remove('open');
+}
+function openNewTrade() {
+  resetTradeForm();
+  openTradeModal('新增交易');
+}
+function openCapitalSettings() {
+  var el = document.getElementById('rt-budget');
+  if (el) {
+    el.focus();
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+}
+function toggleAllLedger() {
+  var extra = document.getElementById('ledger-extra');
+  var btn = document.getElementById('ledger-toggle');
+  if (!extra) return;
+  extra.classList.toggle('show');
+  if (btn) btn.textContent = extra.classList.contains('show') ? '收合交易紀錄' : '查看全部交易紀錄';
 }
 function trackerBuildPositions(rows) {
   var prices = trackerLoadPrices();
@@ -324,9 +358,7 @@ function trackerCalcSummary(rows, positions) {
 }
 function trackerFormTx() {
   var side = document.getElementById('rt-action').value || 'buy';
-  var buyPrice = trackerNum('rt-buy');
-  var currentPrice = trackerNum('rt-current');
-  var price = side === 'sell' ? currentPrice : buyPrice;
+  var price = trackerNum('rt-price');
   return {
     id: document.getElementById('rt-edit-id').value || trackerUid(),
     account_id: 'default',
@@ -340,6 +372,9 @@ function trackerFormTx() {
     trade_date: document.getElementById('rt-date').value || new Date().toISOString().slice(0,10),
     source: document.getElementById('rt-source').value || 'self',
     note: trackerText('rt-note'),
+    strategy: trackerText('rt-strategy'),
+    stop_loss: trackerNum('rt-stop-loss'),
+    take_profit: trackerNum('rt-take-profit'),
     fee: trackerNum('rt-fee'),
     tax: trackerNum('rt-tax'),
     other_cost: trackerNum('rt-other-cost'),
@@ -350,7 +385,7 @@ function addTradeRecord() {
   var tx = trackerFormTx();
   if (!tx.symbol || tx.price <= 0 || tx.quantity <= 0) {
     alert('請至少填寫代號、交易價格與數量');
-    return;
+    return false;
   }
   var rows = trackerLoad();
   var editId = document.getElementById('rt-edit-id').value;
@@ -366,7 +401,7 @@ function addTradeRecord() {
     });
     if (tx.quantity > available) {
       alert('賣出數量超過目前持有數量，請確認交易紀錄。');
-      return;
+      return false;
     }
   }
   if (editId) {
@@ -377,12 +412,13 @@ function addTradeRecord() {
     rows.push(tx);
   }
   var prices = trackerLoadPrices();
-  var currentHint = trackerNum('rt-current') || tx.price;
+  var currentHint = trackerNum('rt-price') || tx.price;
   prices[trackerPositionKey(tx)] = currentHint;
   trackerSavePrices(prices);
   trackerSave(rows);
   resetTradeForm();
   renderTracker();
+  return true;
 }
 function editTradeRecord(id) {
   var row = trackerLoad().find(function(r){return String(r.id) === String(id);});
@@ -393,17 +429,20 @@ function editTradeRecord(id) {
   document.getElementById('rt-warrant-type').value = row.warrant_type || '';
   document.getElementById('rt-code').value = row.symbol || '';
   document.getElementById('rt-name').value = row.name || '';
-  document.getElementById('rt-buy').value = row.side === 'sell' ? '' : row.price;
-  document.getElementById('rt-current').value = row.side === 'sell' ? row.price : (trackerLoadPrices()[trackerPositionKey(row)] || row.price || '');
+  document.getElementById('rt-price').value = row.price || '';
   document.getElementById('rt-qty').value = row.quantity || '';
   document.getElementById('rt-source').value = row.source || 'self';
   document.getElementById('rt-date').value = row.trade_date || new Date().toISOString().slice(0,10);
   document.getElementById('rt-fee').value = row.fee || '';
   document.getElementById('rt-tax').value = row.tax || '';
   document.getElementById('rt-other-cost').value = row.other_cost || '';
+  document.getElementById('rt-strategy').value = row.strategy || '';
+  document.getElementById('rt-stop-loss').value = row.stop_loss || '';
+  document.getElementById('rt-take-profit').value = row.take_profit || '';
   document.getElementById('rt-note').value = row.note || '';
   document.getElementById('rt-submit').textContent = '儲存修改';
   document.getElementById('rt-cancel-edit').style.display = 'inline-block';
+  openTradeModal('修改交易');
   document.getElementById('rt-code').focus();
 }
 function deleteTradeRecord(id) {
@@ -429,7 +468,7 @@ function updatePositionPrice(key, value) {
   trackerSavePrices(prices);
   renderTracker();
 }
-function prefillTrade(key, side) {
+function prefillTrade(key, side, allOut) {
   var pos = trackerBuildPositions(trackerLoad()).find(function(p){return p.key === key;});
   if (!pos) return;
   document.getElementById('rt-edit-id').value = '';
@@ -438,13 +477,13 @@ function prefillTrade(key, side) {
   document.getElementById('rt-warrant-type').value = pos.warrant_type || '';
   document.getElementById('rt-code').value = pos.symbol;
   document.getElementById('rt-name').value = pos.name || '';
-  document.getElementById('rt-buy').value = side === 'buy' ? (pos.current_price || pos.average_cost || '') : '';
-  document.getElementById('rt-current').value = pos.current_price || pos.average_cost || '';
-  document.getElementById('rt-qty').value = side === 'sell' ? pos.remaining_quantity : '';
+  document.getElementById('rt-price').value = pos.current_price || pos.average_cost || '';
+  document.getElementById('rt-qty').value = side === 'sell' ? (allOut ? pos.remaining_quantity : '') : '';
   document.getElementById('rt-source').value = pos.source || 'self';
   document.getElementById('rt-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('rt-submit').textContent = '新增紀錄';
   document.getElementById('rt-cancel-edit').style.display = 'none';
+  openTradeModal(side === 'sell' ? (allOut ? '全部出場' : '部分賣出') : '加碼買進');
   document.getElementById('rt-code').focus();
 }
 function trackerMoney(v) {
@@ -467,6 +506,22 @@ function trackerRenderCashDetail(summaryData, txCount) {
     warn +
     '</div>';
 }
+var trackerPositionFilter = 'all';
+function setPositionFilter(filter) {
+  trackerPositionFilter = filter || 'all';
+  renderTracker();
+}
+function trackerPassPositionFilter(p) {
+  if (trackerPositionFilter === 'stock') return p.asset_type === 'stock';
+  if (trackerPositionFilter === 'call') return p.asset_type === 'warrant' && p.warrant_type === 'call';
+  if (trackerPositionFilter === 'put') return p.asset_type === 'warrant' && p.warrant_type === 'put';
+  if (trackerPositionFilter === 'profit') return p.total_pnl > 0;
+  if (trackerPositionFilter === 'loss') return p.total_pnl < 0;
+  return true;
+}
+function trackerMonthKey(d) {
+  return String(d || '').slice(0,7);
+}
 function renderTracker() {
   var rows = trackerLoad();
   var body = document.getElementById('tracker-body');
@@ -477,62 +532,77 @@ function renderTracker() {
   if (budgetInput && budgetInput.value === '') budgetInput.value = trackerLoadBudget();
   var positions = trackerBuildPositions(rows);
   var openPositions = positions.filter(function(p){return p.status === 'open';});
+  var filteredPositions = openPositions.filter(trackerPassPositionFilter);
   var summaryData = trackerCalcSummary(rows, positions);
   if (cashDetail) cashDetail.innerHTML = trackerRenderCashDetail(summaryData, rows.length);
+  var totalAssets = summaryData.availableCash + summaryData.marketValue;
+  var pnlColor = summaryData.totalPnl > 0 ? '#27ae60' : summaryData.totalPnl < 0 ? '#e74c3c' : '#555';
+  var realizedColor = summaryData.realized > 0 ? '#27ae60' : summaryData.realized < 0 ? '#e74c3c' : '#555';
+  var unrealizedColor = summaryData.unrealized > 0 ? '#27ae60' : summaryData.unrealized < 0 ? '#e74c3c' : '#555';
+  var monthlyPnl = 0;
+  var monthKey = new Date().toISOString().slice(0,7);
+  positions.forEach(function(p){ if (p.status === 'closed' && p.transactions.some(function(tx){return trackerMonthKey(tx.trade_date) === monthKey;})) monthlyPnl += p.realized_pnl; });
   summary.innerHTML =
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.principal)+'</div><div class="stat-lbl">累計投入本金</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.availableCash>=0?'#555':'#e74c3c')+'">'+trackerMoney(summaryData.availableCash)+'</div><div class="stat-lbl">可用資金</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.openCost)+'</div><div class="stat-lbl">目前持倉成本</div></div>' +
+    '<div class="tracker-main-grid">' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(totalAssets)+'</div><div class="stat-lbl">總資產</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+pnlColor+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="stat-lbl">總損益</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+pnlColor+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="stat-lbl">整體報酬率</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(monthlyPnl>0?'#27ae60':monthlyPnl<0?'#e74c3c':'#555')+'">'+(monthlyPnl>0?'+':'')+trackerMoney(monthlyPnl)+'</div><div class="stat-lbl">本月損益</div></div>' +
+    '</div>' +
+    '<div class="tracker-small-grid">' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.availableCash)+'</div><div class="stat-lbl">可用現金</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:#555">'+trackerMoney(summaryData.marketValue)+'</div><div class="stat-lbl">持倉市值</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.realized>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.realized>=0?'+':'')+trackerMoney(summaryData.realized)+'</div><div class="stat-lbl">已實現損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.unrealized>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.unrealized>=0?'+':'')+trackerMoney(summaryData.unrealized)+'</div><div class="stat-lbl">未實現損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.totalPnl>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.totalPnl>=0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="stat-lbl">總損益</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:'+(summaryData.returnPct>=0?'#27ae60':'#e74c3c')+'">'+(summaryData.returnPct>=0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="stat-lbl">整體資金報酬率</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.usagePct.toFixed(1)+'%</div><div class="stat-lbl">目前資金使用率</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.openCount+'</div><div class="stat-lbl">開放持倉數</div></div>' +
-    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.closedCount+'</div><div class="stat-lbl">已完成交易數</div></div>';
-  if (!rows.length) {
-    body.innerHTML = '<h3 style="font-size:16px;margin:14px 0 8px">B. 目前持倉</h3><p style="color:#aaa;padding:10px 0">尚未新增交易。可以先用少量資金試單，再把買進或賣出交易填進來追蹤實際報酬。</p><h3 style="font-size:16px;margin:14px 0 8px">C. 交易流水帳</h3><p style="color:#aaa;padding:10px 0">尚無交易流水帳。</p>';
-    return;
-  }
-  var positionHtml = openPositions.length ? openPositions.map(function(p) {
-    var color = p.total_pnl >= 0 ? '#27ae60' : '#e74c3c';
+    '<div class="stat-box"><div class="stat-val" style="color:'+realizedColor+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</div><div class="stat-lbl">已實現損益</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+unrealizedColor+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</div><div class="stat-lbl">未實現損益</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.usagePct.toFixed(1)+'%</div><div class="stat-lbl">資金使用率</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:#555">'+summaryData.openCount+'</div><div class="stat-lbl">目前持倉檔數</div></div>' +
+    '</div>';
+  var filterButtons = [['all','全部'],['stock','股票'],['call','認購'],['put','認售'],['profit','獲利'],['loss','虧損']].map(function(item){return '<button class="'+(trackerPositionFilter===item[0]?'active':'')+'" onclick="setPositionFilter(&quot;'+item[0]+'&quot;)">'+item[1]+'</button>';}).join('');
+  var positionHtml = filteredPositions.length ? filteredPositions.map(function(p) {
+    var color = p.total_pnl > 0 ? '#27ae60' : p.total_pnl < 0 ? '#e74c3c' : '#555';
     var txRows = p.transactions.map(function(tx) {
       var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
-      return '<tr><td>'+trackerEscape(tx.trade_date)+'</td><td>'+trackerEscape(tx.side === 'sell' ? '賣出' : '買進')+'</td><td>'+trackerPrice(tx.price)+'</td><td>'+trackerMoney(tx.quantity)+'</td><td>'+trackerMoney(gross)+'</td></tr>';
+      return '<tr><td>'+trackerEscape(tx.trade_date)+'</td><td>'+trackerEscape(tx.side === 'sell' ? '賣出' : '買進')+'</td><td>'+trackerPrice(tx.price)+'</td><td>'+trackerMoney(tx.quantity)+'</td><td>'+trackerMoney(gross)+'</td><td>'+trackerMoney((tx.fee||0)+(tx.tax||0)+(tx.other_cost||0))+'</td></tr>';
     }).join('');
-    return '<div style="border-top:1px solid #eee;padding:12px 0">' +
-      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
-      '<div><b>'+trackerEscape(p.symbol)+' '+trackerEscape(p.name || '')+'</b> <span style="color:#777;font-size:12px">｜'+trackerAssetLabel(p.asset_type)+'｜'+trackerWarrantLabel(p.warrant_type)+'｜'+trackerSourceLabel(p.source)+'</span><br>' +
-      '<span style="font-size:12px;color:#777">累計買進 '+trackerMoney(p.total_buy_quantity)+'｜已賣出 '+trackerMoney(p.total_sell_quantity)+'｜剩餘 '+trackerMoney(p.remaining_quantity)+'｜平均成本 '+trackerPrice(p.average_cost)+'</span></div>' +
-      '<div style="text-align:right;color:'+color+';font-weight:700">總損益 '+(p.total_pnl>=0?'+':'')+trackerMoney(p.total_pnl)+'<br><span style="font-size:12px;color:#777">未實現 '+(p.unrealized_pnl>=0?'+':'')+trackerMoney(p.unrealized_pnl)+'</span></div>' +
-      '</div>' +
-      '<div style="font-size:12px;color:#777;margin-top:6px">目前價格 <input value="'+trackerPrice(p.current_price)+'" onchange="updatePositionPrice(\''+p.key+'\', this.value)" style="width:82px;border:1px solid #ddd;border-radius:6px;padding:3px 6px">｜持倉成本 '+trackerMoney(p.remaining_cost)+'｜市值 '+trackerMoney(p.market_value)+'｜已實現 '+(p.realized_pnl>=0?'+':'')+trackerMoney(p.realized_pnl)+'</div>' +
-      '<div class="tracker-actions" style="margin-top:7px"><button onclick="prefillTrade(\''+p.key+'\', \'buy\')" style="background:#16213e;color:#fff">新增買進</button><button onclick="prefillTrade(\''+p.key+'\', \'sell\')" style="background:#e67e22;color:#fff">新增賣出</button></div>' +
-      '<details style="margin-top:7px"><summary style="cursor:pointer;color:#1f5f99;font-size:12px">展開查看交易明細</summary><div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px"><thead><tr><th>日期</th><th>方向</th><th>價格</th><th>數量</th><th>金額</th></tr></thead><tbody>'+txRows+'</tbody></table></div></details>' +
+    return '<div class="position-card">' +
+      '<div class="position-head"><div><div class="position-title">'+trackerEscape(p.symbol)+' '+trackerEscape(p.name || '')+'｜'+trackerWarrantLabel(p.warrant_type)+'｜預設帳戶</div>' +
+      '<div class="position-meta">'+trackerAssetLabel(p.asset_type)+'｜'+trackerSourceLabel(p.source)+'</div></div>' +
+      '<div class="position-pnl" style="color:'+color+'">'+(p.total_pnl>0?'+':'')+trackerMoney(p.total_pnl)+'<br><span style="font-size:13px">'+(p.unrealized_return_pct>0?'+':'')+p.unrealized_return_pct.toFixed(2)+'%</span></div></div>' +
+      '<div class="position-line">持有 '+trackerMoney(p.remaining_quantity)+'｜均價 '+trackerPrice(p.average_cost)+'｜現價 <input value="'+trackerPrice(p.current_price)+'" onchange="updatePositionPrice(&quot;'+p.key+'&quot;, this.value)" style="width:78px;border:1px solid #ddd;border-radius:6px;padding:3px 6px"></div>' +
+      '<div class="position-line">投入 '+trackerMoney(p.remaining_cost)+'｜市值 '+trackerMoney(p.market_value)+'</div>' +
+      '<div class="position-line">已實現 '+(p.realized_pnl>0?'+':'')+trackerMoney(p.realized_pnl)+'｜未實現 '+(p.unrealized_pnl>0?'+':'')+trackerMoney(p.unrealized_pnl)+'｜買進 '+trackerMoney(p.total_buy_quantity)+'｜賣出 '+trackerMoney(p.total_sell_quantity)+'</div>' +
+      '<div class="mini-actions"><button onclick="prefillTrade(&quot;'+p.key+'&quot;, &quot;buy&quot;)" style="background:#16213e;color:#fff">加碼</button><button onclick="prefillTrade(&quot;'+p.key+'&quot;, &quot;sell&quot;)" style="background:#e67e22;color:#fff">部分賣出</button><button onclick="prefillTrade(&quot;'+p.key+'&quot;, &quot;sell&quot;, true)" style="background:#fff5f3;color:#c0392b">全部出場</button><button onclick="updatePositionPrice(&quot;'+p.key+'&quot;, prompt(&quot;輸入新的目前價格&quot;, &quot;'+trackerPrice(p.current_price)+'&quot;))" style="background:#f4f4f4;color:#555">更新現價</button></div>' +
+      '<details style="margin-top:8px"><summary style="cursor:pointer;color:#1f5f99;font-size:12px">明細</summary><div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px"><thead><tr><th>日期</th><th>方向</th><th>價格</th><th>數量</th><th>金額</th><th>費用</th></tr></thead><tbody>'+txRows+'</tbody></table></div></details>' +
       '</div>';
-  }).join('') : '<p style="color:#aaa;padding:10px 0">目前沒有開放持倉。</p>';
-  var ledgerHtml = rows.slice().sort(function(a,b){return String(b.trade_date||'').localeCompare(String(a.trade_date||''));}).map(function(tx) {
+  }).join('') : '<p style="color:#aaa;padding:10px 0">目前沒有符合篩選的開放持倉。</p>';
+  var closedPositions = positions.filter(function(p){return p.status === 'closed' && p.total_buy_quantity > 0;});
+  var wins = closedPositions.filter(function(p){return p.realized_pnl > 0;}).length;
+  var closedRealized = closedPositions.reduce(function(sum,p){return sum+p.realized_pnl;},0);
+  var avgReturn = closedPositions.length ? closedPositions.reduce(function(sum,p){return sum + (p.buy_spend ? p.realized_pnl / p.buy_spend * 100 : 0);},0) / closedPositions.length : 0;
+  var completedHtml = '<div class="tracker-small-grid"><div class="stat-box"><div class="stat-val">'+closedPositions.length+'</div><div class="stat-lbl">本月完成交易數</div></div><div class="stat-box"><div class="stat-val">'+(closedPositions.length?Math.round(wins/closedPositions.length*100):0)+'%</div><div class="stat-lbl">勝率</div></div><div class="stat-box"><div class="stat-val" style="color:'+(closedRealized>=0?'#27ae60':'#e74c3c')+'">'+(closedRealized>0?'+':'')+trackerMoney(closedRealized)+'</div><div class="stat-lbl">已實現損益</div></div><div class="stat-box"><div class="stat-val" style="color:'+(avgReturn>=0?'#27ae60':'#e74c3c')+'">'+(avgReturn>0?'+':'')+avgReturn.toFixed(2)+'%</div><div class="stat-lbl">平均報酬率</div></div></div><button class="tracker-secondary" onclick="toggleAllLedger()">查看已完成交易</button>';
+  var sortedRows = rows.slice().sort(function(a,b){return String(b.trade_date||'').localeCompare(String(a.trade_date||'')) || String(b.created_at||'').localeCompare(String(a.created_at||''));});
+  function ledgerRow(tx, withActions) {
     var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
-    var costs = Number(tx.fee || 0) + Number(tx.tax || 0) + Number(tx.other_cost || 0);
     var sideColor = tx.side === 'sell' ? '#e67e22' : '#1f5f99';
     return '<tr style="border-top:1px solid #f2f2f2">' +
       '<td style="padding:7px">'+trackerEscape(tx.trade_date)+'</td>' +
-      '<td style="padding:7px"><b>'+trackerEscape(tx.symbol)+' '+trackerEscape(tx.name || '')+'</b><br><span style="font-size:11px;color:#777">'+trackerAssetLabel(tx.asset_type)+'｜'+trackerWarrantLabel(tx.warrant_type)+'</span></td>' +
+      '<td style="padding:7px"><b>'+trackerEscape(tx.name || tx.symbol)+'</b><br><span style="font-size:11px;color:#777">'+trackerEscape(tx.symbol)+'｜預設帳戶</span></td>' +
       '<td style="padding:7px"><span style="background:'+sideColor+';color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">'+(tx.side === 'sell' ? '賣出' : '買進')+'</span></td>' +
       '<td style="padding:7px;text-align:right">'+trackerPrice(tx.price)+'</td>' +
       '<td style="padding:7px;text-align:right">'+trackerMoney(tx.quantity)+'</td>' +
       '<td style="padding:7px;text-align:right">'+trackerMoney(gross)+'</td>' +
-      '<td style="padding:7px;text-align:right">'+trackerMoney(tx.fee || 0)+'</td>' +
-      '<td style="padding:7px;text-align:right">'+trackerMoney(tx.tax || 0)+'</td>' +
-      '<td style="padding:7px">'+trackerSourceLabel(tx.source)+'<br><span style="font-size:11px;color:#777">'+trackerEscape(tx.note || '')+'</span></td>' +
-      '<td style="padding:7px;white-space:nowrap"><button onclick="editTradeRecord(\''+tx.id+'\')" style="border:none;background:#16213e;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">修改</button> <button onclick="deleteTradeRecord(\''+tx.id+'\')" style="border:none;background:#f4f4f4;color:#777;border-radius:6px;padding:4px 8px;cursor:pointer">刪除</button></td>' +
+      (withActions ? '<td style="padding:7px;white-space:nowrap"><button onclick="editTradeRecord(&quot;'+tx.id+'&quot;)" style="border:none;background:#16213e;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">修改</button> <button onclick="deleteTradeRecord(&quot;'+tx.id+'&quot;)" style="border:none;background:#f4f4f4;color:#777;border-radius:6px;padding:4px 8px;cursor:pointer">刪除</button></td>' : '') +
       '</tr>';
-  }).join('');
+  }
+  var recentRows = sortedRows.slice(0,5).map(function(tx){return ledgerRow(tx, false);}).join('');
+  var extraRows = sortedRows.map(function(tx){return ledgerRow(tx, true);}).join('');
+  var ledgerHtml = rows.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f8f8f8;color:#777"><th style="padding:7px">日期</th><th style="padding:7px">商品</th><th style="padding:7px">方向</th><th style="padding:7px;text-align:right">成交價格</th><th style="padding:7px;text-align:right">數量</th><th style="padding:7px;text-align:right">交易金額</th></tr></thead><tbody>'+recentRows+'</tbody><tbody id="ledger-extra" class="ledger-extra"><tr><td colspan="7" style="padding:8px;color:#777;background:#fafafa">全部交易紀錄：可在此修改、刪除。日期 / 帳戶 / 類型篩選下一版接上。</td></tr>'+extraRows+'</tbody></table></div>' + (rows.length>5 ? '<button id="ledger-toggle" class="tracker-secondary" onclick="toggleAllLedger()" style="margin-top:8px">查看全部交易紀錄</button>' : '') : '<p style="color:#aaa;padding:10px 0">尚無交易紀錄。</p>';
   body.innerHTML =
-    '<h3 style="font-size:16px;margin:14px 0 8px">B. 目前持倉</h3>' + positionHtml +
-    '<h3 style="font-size:16px;margin:16px 0 8px">C. 交易流水帳</h3>' +
-    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f8f8f8;color:#777"><th style="padding:7px">交易日期</th><th style="padding:7px">商品</th><th style="padding:7px">方向</th><th style="padding:7px;text-align:right">價格</th><th style="padding:7px;text-align:right">數量</th><th style="padding:7px;text-align:right">交易金額</th><th style="padding:7px;text-align:right">手續費</th><th style="padding:7px;text-align:right">稅金</th><th style="padding:7px">來源 / 備註</th><th style="padding:7px">操作</th></tr></thead><tbody>'+ledgerHtml+'</tbody></table></div>';
+    '<section><h3 style="font-size:16px;margin:14px 0 8px">目前持倉</h3><div class="tracker-filter">'+filterButtons+'</div>'+positionHtml+'</section>' +
+    '<section><h3 style="font-size:16px;margin:16px 0 8px">已完成交易</h3>'+completedHtml+'</section>' +
+    '<section><h3 style="font-size:16px;margin:16px 0 8px">最近交易紀錄</h3>'+ledgerHtml+'</section>' +
+    '<section><h3 style="font-size:16px;margin:16px 0 8px">績效分析</h3><div class="analysis-entry"><button>依交易依據</button><button>依策略</button><button>依帳戶</button><button>依商品類型</button></div></section>' +
+    '<section style="margin-top:14px"><button onclick="showTab(&quot;warrants&quot;);location.hash=&quot;warrants&quot;" class="tracker-secondary">前往權證篩選</button></section>';
 }
 document.addEventListener('DOMContentLoaded', function() {
   showTab(location.hash === '#warrants' ? 'warrants' : location.hash === '#returns' ? 'returns' : 'stocks');
@@ -1529,15 +1599,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <div id="tab-returns" class="tab-panel">
 <div class="card">
-  <div class="card-title">
-    報酬追蹤
-    <span class="badge" style="background:#1f5f99">手動紀錄</span>
-    <span style="font-size:11px;font-weight:normal;color:#aaa">資料只存在你的瀏覽器，不會上傳</span>
+  <div class="tracker-top">
+    <div class="tracker-title">
+      <h2>報酬追蹤</h2>
+      <div class="tracker-sub">實盤紀錄｜資料只存在此瀏覽器，不會上傳</div>
+    </div>
+    <div class="tracker-toolbar">
+      <label style="font-size:12px;color:#777">帳戶：
+        <select id="rt-account-filter">
+          <option value="all">全部帳戶</option>
+          <option value="default">預設帳戶</option>
+        </select>
+      </label>
+      <button class="tracker-primary" onclick="openNewTrade()">＋ 新增交易</button>
+      <button class="tracker-secondary" onclick="openCapitalSettings()">資金設定</button>
+    </div>
   </div>
-  <div style="font-size:12px;color:#777;line-height:1.6;margin-bottom:12px">
-    以交易流水帳自動彙總目前持倉，支援分批買進、分批賣出與手動費用。資料只存在你的瀏覽器。
-  </div>
-  <div class="tracker-grid" style="margin-bottom:10px">
+  <div class="tracker-grid" style="margin:14px 0 10px">
     <label>累計投入本金
       <input id="rt-budget" type="number" step="1000" value="10000" oninput="trackerBudgetChanged()" onchange="trackerSaveBudget()" placeholder="例如 10000">
     </label>
@@ -1545,76 +1623,106 @@ document.addEventListener('DOMContentLoaded', function() {
       <button type="button" onclick="trackerSaveBudget()" style="width:100%;border:none;background:#16213e;color:#fff;border-radius:8px;padding:10px;cursor:pointer">更新本金</button>
     </label>
   </div>
-  <h3 style="font-size:16px;margin:10px 0 8px">A. 績效總覽</h3>
-  <div id="tracker-summary" class="stat-grid" style="margin-bottom:12px"></div>
+  <h3 style="font-size:16px;margin:10px 0 8px">績效總覽</h3>
+  <div id="tracker-summary" style="margin-bottom:12px"></div>
   <div id="tracker-cash-detail"></div>
-  <input id="rt-edit-id" type="hidden">
-  <div class="tracker-grid">
-    <label>類型
-      <select id="rt-type">
-        <option value="warrant">權證</option>
-        <option value="stock">股票</option>
-      </select>
-    </label>
-    <label>權證類型
-      <select id="rt-warrant-type">
-        <option value="">未分類</option>
-        <option value="call">認購</option>
-        <option value="put">認售</option>
-      </select>
-    </label>
-    <label>交易方向
-      <select id="rt-action">
-        <option value="buy">買入</option>
-        <option value="sell">賣出</option>
-      </select>
-    </label>
-    <label>代號
-      <input id="rt-code" placeholder="例如 2330 / 056772">
-    </label>
-    <label>名稱
-      <input id="rt-name" placeholder="可不填">
-    </label>
-    <label>買入價
-      <input id="rt-buy" type="number" step="0.01" placeholder="例如 1.25">
-    </label>
-    <label>目前價 / 賣出價
-      <input id="rt-current" type="number" step="0.01" placeholder="買入可填目前價，賣出填賣出價">
-    </label>
-    <label>數量
-      <input id="rt-qty" type="number" step="1" placeholder="股數 / 張數">
-    </label>
-    <label>買入來源
-      <select id="rt-source">
-        <option value="self">自行判斷</option>
-        <option value="screener">網頁評分篩選</option>
-        <option value="recommendation">推薦</option>
-      </select>
-    </label>
-    <label>交易日期
-      <input id="rt-date" type="date">
-    </label>
-    <label>手續費
-      <input id="rt-fee" type="number" step="1" placeholder="可填 0">
-    </label>
-    <label>交易稅
-      <input id="rt-tax" type="number" step="1" placeholder="可填 0">
-    </label>
-    <label>其他成本
-      <input id="rt-other-cost" type="number" step="1" placeholder="可填 0">
-    </label>
-  </div>
-  <div class="tracker-grid" style="margin-top:10px">
-    <label>備註
-      <input id="rt-note" placeholder="例如：小資金試單、觀察出場難度">
-    </label>
-  </div>
-  <div class="tracker-actions">
-    <button id="rt-submit" onclick="addTradeRecord()" style="background:#16213e;color:#fff">新增紀錄</button>
-    <button id="rt-cancel-edit" onclick="resetTradeForm()" style="display:none;background:#f4f4f4;color:#777">取消修改</button>
-    <button onclick="clearTradeRecords()" style="background:#f4f4f4;color:#777">清空紀錄</button>
-  </div>
   <div id="tracker-body" style="margin-top:12px"></div>
+  <details style="margin-top:14px">
+    <summary style="font-size:12px;color:#999">資料管理</summary>
+    <button onclick="clearTradeRecords()" class="tracker-danger" style="margin-top:8px;border-radius:8px;padding:8px 10px;cursor:pointer">清空所有交易紀錄</button>
+  </details>
+</div>
+
+<div id="trade-modal" class="returns-modal" onclick="if(event.target.id==='trade-modal') closeTradeModal()">
+  <div class="returns-dialog">
+    <div class="returns-dialog-head">
+      <div>
+        <h3 id="trade-modal-title" style="font-size:18px">新增交易</h3>
+        <div style="font-size:12px;color:#888;margin-top:3px">新增或修改交易後，持倉與績效會自動重算。</div>
+      </div>
+      <button class="returns-close" onclick="closeTradeModal()">關閉</button>
+    </div>
+    <input id="rt-edit-id" type="hidden">
+    <div class="tracker-grid">
+      <label>帳戶
+        <select id="rt-account"><option value="default">預設帳戶</option></select>
+      </label>
+      <label>商品類型
+        <select id="rt-type">
+          <option value="stock">股票</option>
+          <option value="warrant">權證</option>
+        </select>
+      </label>
+      <label>權證類型
+        <select id="rt-warrant-type">
+          <option value="">未分類</option>
+          <option value="call">認購</option>
+          <option value="put">認售</option>
+        </select>
+      </label>
+      <label>交易方向
+        <select id="rt-action">
+          <option value="buy">買進</option>
+          <option value="sell">賣出</option>
+        </select>
+      </label>
+      <label>代號
+        <input id="rt-code" placeholder="例如 2330 / 056772">
+      </label>
+      <label>名稱
+        <input id="rt-name" placeholder="可不填">
+      </label>
+      <label>成交價格
+        <input id="rt-price" type="number" step="0.01" placeholder="例如 1.25">
+      </label>
+      <label>數量
+        <input id="rt-qty" type="number" step="1" placeholder="股數 / 張數">
+      </label>
+      <label>交易日期
+        <input id="rt-date" type="date">
+      </label>
+    </div>
+    <details class="advanced-box">
+      <summary style="font-size:13px;color:#1f5f99;font-weight:700">展開進階設定</summary>
+      <div class="tracker-grid" style="margin-top:10px">
+        <label>交易依據
+          <select id="rt-source">
+            <option value="self">自行判斷</option>
+            <option value="stock_radar">股票雷達</option>
+            <option value="screener">權證篩選</option>
+            <option value="event">事件交易</option>
+            <option value="recommendation">推薦</option>
+            <option value="other">其他</option>
+          </select>
+        </label>
+        <label>策略
+          <input id="rt-strategy" placeholder="例如：短打 / 波段 / 測試單">
+        </label>
+        <label>手續費
+          <input id="rt-fee" type="number" step="1" placeholder="可填 0">
+        </label>
+        <label>交易稅
+          <input id="rt-tax" type="number" step="1" placeholder="可填 0">
+        </label>
+        <label>其他成本
+          <input id="rt-other-cost" type="number" step="1" placeholder="可填 0">
+        </label>
+        <label>預設停損價
+          <input id="rt-stop-loss" type="number" step="0.01" placeholder="可不填">
+        </label>
+        <label>預設停利價
+          <input id="rt-take-profit" type="number" step="0.01" placeholder="可不填">
+        </label>
+        <label>備註
+          <input id="rt-note" placeholder="例如：觀察出場難度">
+        </label>
+      </div>
+    </details>
+    <div class="tracker-actions">
+      <button id="rt-submit" onclick="if(addTradeRecord()) closeTradeModal();" style="background:#16213e;color:#fff">儲存交易</button>
+      <button id="rt-cancel-edit" onclick="resetTradeForm();closeTradeModal()" style="display:none;background:#f4f4f4;color:#777">取消修改</button>
+    </div>
+  </div>
 </div>
 </div>
 
