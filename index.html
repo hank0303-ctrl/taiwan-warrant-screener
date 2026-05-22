@@ -166,12 +166,25 @@ function trackerLoadBudget() {
   var v = parseFloat(localStorage.getItem('twReturnBudget') || '10000');
   return isNaN(v) || v < 0 ? 10000 : v;
 }
-function trackerSaveBudget() {
+function trackerSaveBudget(skipRender) {
   var el = document.getElementById('rt-budget');
-  var v = el ? parseFloat(el.value) : trackerLoadBudget();
-  if (isNaN(v) || v < 0) v = 0;
+  if (!el) return;
+  if (el.value === '') return;
+  var v = parseFloat(el.value);
+  if (isNaN(v) || v < 0) {
+    alert('投入本金請輸入 0 以上的數字');
+    return;
+  }
   localStorage.setItem('twReturnBudget', String(v));
+  if (skipRender === true) return;
   renderTracker();
+}
+function trackerBudgetChanged() {
+  trackerSaveBudget(true);
+  window.clearTimeout(window._trackerBudgetTimer);
+  window._trackerBudgetTimer = window.setTimeout(function() {
+    renderTracker();
+  }, 250);
 }
 function trackerNum(id) {
   var el = document.getElementById(id);
@@ -1510,7 +1523,10 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
   <div class="tracker-grid" style="margin-bottom:10px">
     <label>累計投入本金
-      <input id="rt-budget" type="number" step="1000" value="10000" onchange="trackerSaveBudget()" placeholder="例如 10000">
+      <input id="rt-budget" type="number" step="1000" value="10000" oninput="trackerBudgetChanged()" onchange="trackerSaveBudget()" placeholder="例如 10000">
+    </label>
+    <label>&nbsp;
+      <button type="button" onclick="trackerSaveBudget()" style="width:100%;border:none;background:#16213e;color:#fff;border-radius:8px;padding:10px;cursor:pointer">更新本金</button>
     </label>
   </div>
   <h3 style="font-size:16px;margin:10px 0 8px">A. 績效總覽</h3>
