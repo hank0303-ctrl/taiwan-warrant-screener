@@ -106,6 +106,7 @@ function trackerEscape(text) {
 function resetTradeForm() {
   ['rt-code','rt-name','rt-buy','rt-current','rt-qty','rt-note'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('rt-edit-id').value = '';
+  document.getElementById('rt-action').value = 'buy';
   document.getElementById('rt-submit').textContent = '新增紀錄';
   document.getElementById('rt-cancel-edit').style.display = 'none';
   var d = document.getElementById('rt-date');
@@ -124,6 +125,7 @@ function addTradeRecord() {
   var editId = parseInt(document.getElementById('rt-edit-id').value || '0', 10);
   var record = {
     id: editId || Date.now(),
+    action: document.getElementById('rt-action').value || 'buy',
     type: document.getElementById('rt-type').value,
     code: code,
     name: trackerText('rt-name'),
@@ -149,6 +151,7 @@ function editTradeRecord(id) {
   var row = trackerLoad().find(function(r){return r.id === id;});
   if (!row) return;
   document.getElementById('rt-edit-id').value = row.id;
+  document.getElementById('rt-action').value = row.action || 'buy';
   document.getElementById('rt-type').value = row.type || '權證';
   document.getElementById('rt-code').value = row.code || '';
   document.getElementById('rt-name').value = row.name || '';
@@ -186,17 +189,29 @@ function renderTracker() {
   var body = document.getElementById('tracker-body');
   var summary = document.getElementById('tracker-summary');
   if (!body || !summary) return;
-  var totalCost = 0, totalValue = 0, wins = 0;
+  var totalCost = 0, totalValue = 0, totalPnl = 0, realizedPnl = 0, wins = 0;
   var budget = trackerLoadBudget();
   var budgetInput = document.getElementById('rt-budget');
   if (budgetInput && budgetInput.value === '') budgetInput.value = budget;
   rows.forEach(function(r) {
-    totalCost += r.buy * r.qty;
-    totalValue += r.current * r.qty;
-    if (r.current >= r.buy) wins += 1;
+    var action = r.action || 'buy';
+    var entry = r.buy * r.qty;
+    var exitValue = r.current * r.qty;
+    var rowPnl = exitValue - entry;
+    if (action === 'sell') {
+      totalCost -= exitValue;
+      realizedPnl += rowPnl;
+      totalPnl += rowPnl;
+    } else {
+      totalCost += entry;
+      totalValue += exitValue;
+      totalPnl += rowPnl;
+    }
+    if (rowPnl >= 0) wins += 1;
   });
-  var pnl = totalValue - totalCost;
-  var roi = totalCost > 0 ? pnl / totalCost * 100 : 0;
+  var pnl = totalPnl;
+  var roiBase = rows.reduce(function(sum, r){ return sum + ((r.action || 'buy') === 'buy' ? r.buy * r.qty : 0); }, 0);
+  var roi = roiBase > 0 ? pnl / roiBase * 100 : 0;
   var remaining = budget - totalCost;
   var usage = budget > 0 ? totalCost / budget * 100 : 0;
   summary.innerHTML =
@@ -204,6 +219,7 @@ function renderTracker() {
     '<div class="stat-box"><div class="stat-val" style="color:#555">'+totalCost.toFixed(0)+'</div><div class="stat-lbl">目前總成本</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:'+(remaining>=0?'#555':'#e74c3c')+'">'+remaining.toFixed(0)+'</div><div class="stat-lbl">剩餘資金</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:'+(pnl>=0?'#27ae60':'#e74c3c')+'">'+(pnl>=0?'+':'')+pnl.toFixed(0)+'</div><div class="stat-lbl">總損益</div></div>' +
+    '<div class="stat-box"><div class="stat-val" style="color:'+(realizedPnl>=0?'#27ae60':'#e74c3c')+'">'+(realizedPnl>=0?'+':'')+realizedPnl.toFixed(0)+'</div><div class="stat-lbl">已實現損益</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:'+(roi>=0?'#27ae60':'#e74c3c')+'">'+(roi>=0?'+':'')+roi.toFixed(2)+'%</div><div class="stat-lbl">總報酬率</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:'+(usage>100?'#e74c3c':'#555')+'">'+usage.toFixed(0)+'%</div><div class="stat-lbl">資金使用率</div></div>' +
     '<div class="stat-box"><div class="stat-val" style="color:#555">'+rows.length+'</div><div class="stat-lbl">紀錄筆數</div></div>' +
@@ -217,6 +233,9 @@ function renderTracker() {
     var value = r.current * r.qty;
     var p = value - cost;
     var rr = cost > 0 ? p / cost * 100 : 0;
+    var action = r.action || 'buy';
+    var actionLabel = action === 'sell' ? '賣出' : '買入';
+    var actionColor = action === 'sell' ? '#e67e22' : '#1f5f99';
     var color = p >= 0 ? '#27ae60' : '#e74c3c';
     var icon = p >= 0 ? '▲' : '▼';
     var width = Math.min(100, Math.max(4, Math.abs(rr) * 3));
@@ -228,8 +247,8 @@ function renderTracker() {
     var note = trackerEscape(r.note || '');
     return '<div style="border-top:1px solid #f0f0f0;padding:12px 0">' +
       '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">' +
-      '<div><b>'+code+' '+name+'</b> <span style="color:#777;font-size:12px">｜'+type+'｜'+source+'｜'+date+'</span><br>' +
-      '<span style="font-size:12px;color:#777">買入 '+r.buy+'｜目前 <input value="'+r.current+'" onchange="updateTradeCurrent('+r.id+', this.value)" style="width:76px;border:1px solid #ddd;border-radius:6px;padding:3px 6px">｜數量 '+r.qty+'</span></div>' +
+      '<div><b>'+code+' '+name+'</b> <span style="background:'+actionColor+';color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;margin-left:4px">'+actionLabel+'</span> <span style="color:#777;font-size:12px">｜'+type+'｜'+source+'｜'+date+'</span><br>' +
+      '<span style="font-size:12px;color:#777">成本 '+r.buy+'｜'+(action === 'sell' ? '賣出' : '目前')+' <input value="'+r.current+'" onchange="updateTradeCurrent('+r.id+', this.value)" style="width:76px;border:1px solid #ddd;border-radius:6px;padding:3px 6px">｜數量 '+r.qty+'｜'+(action === 'sell' ? '扣減成本 ' : '投入成本 ')+(action === 'sell' ? '-'+value.toFixed(0) : cost.toFixed(0))+' 元</span></div>' +
       '<div style="text-align:right;color:'+color+';font-weight:700;font-size:18px">'+icon+' '+(rr>=0?'+':'')+rr.toFixed(2)+'%<br><span style="font-size:12px">'+(p>=0?'+':'')+p.toFixed(0)+' 元</span></div>' +
       '</div><div class="profit-bar"><div class="profit-fill" style="width:'+width+'%;background:'+color+'"></div></div>' +
       (note ? '<div style="font-size:12px;color:#777;margin-top:5px">備註：'+note+'</div>' : '') +
@@ -1255,16 +1274,22 @@ document.addEventListener('DOMContentLoaded', function() {
         <option>股票</option>
       </select>
     </label>
+    <label>交易方向
+      <select id="rt-action">
+        <option value="buy">買入</option>
+        <option value="sell">賣出</option>
+      </select>
+    </label>
     <label>代號
       <input id="rt-code" placeholder="例如 2330 / 056772">
     </label>
     <label>名稱
       <input id="rt-name" placeholder="可不填">
     </label>
-    <label>買入價
+    <label>買入 / 成本價
       <input id="rt-buy" type="number" step="0.01" placeholder="例如 1.25">
     </label>
-    <label>目前價
+    <label>目前 / 賣出價
       <input id="rt-current" type="number" step="0.01" placeholder="例如 1.38">
     </label>
     <label>數量
@@ -1277,7 +1302,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <option>推薦</option>
       </select>
     </label>
-    <label>買入日期
+    <label>交易日期
       <input id="rt-date" type="date">
     </label>
   </div>
