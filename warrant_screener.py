@@ -1137,10 +1137,20 @@ body{{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
 .donut-wrap{{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}}
 .donut-legend{{font-size:12px;color:#64748b;line-height:1.9}}
 .holding-list{{display:grid;gap:8px}}
-.holding-row{{background:#fff;border-radius:14px;padding:14px 18px;box-shadow:0 1px 6px rgba(15,23,42,.05);border:1px solid #f1f5f9;display:grid;grid-template-columns:1.2fr repeat(4,.75fr);gap:8px;align-items:center}}
+.holding-card{{background:#fff;border-radius:14px;box-shadow:0 1px 6px rgba(15,23,42,.05);border:1px solid #f1f5f9;overflow:hidden}}
+.holding-card summary::before{{display:none}}
+.holding-card summary{{padding:0}}
+.holding-row{{padding:14px 18px;display:grid;grid-template-columns:1.2fr repeat(4,.75fr);gap:8px;align-items:center}}
 .holding-row b{{font-size:14px;color:#0f172a;font-weight:800}}
 .holding-cell{{font-size:12px;color:#94a3b8;font-weight:500}}
 .holding-cell strong{{display:block;font-size:14px;color:#334155;margin-top:3px;font-weight:700}}
+.holding-hint{{font-size:11px;color:#94a3b8;margin-top:3px}}
+.holding-detail{{border-top:1px solid #f1f5f9;padding:14px 18px;background:#fbfdff}}
+.holding-detail-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}}
+.holding-detail-item{{background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:9px 10px;color:#94a3b8;font-size:11px}}
+.holding-detail-item strong{{display:block;margin-top:3px;color:#0f172a;font-size:14px}}
+.holding-trades{{display:grid;gap:6px;margin-top:8px}}
+.holding-trade-row{{display:grid;grid-template-columns:92px 54px 1fr 92px;gap:8px;align-items:center;font-size:12px;color:#64748b;background:#fff;border:1px solid #eef2f7;border-radius:10px;padding:8px 10px}}
 .recent-list{{display:grid;gap:6px}}
 .recent-row{{background:#fff;border-radius:12px;padding:10px 14px;display:grid;grid-template-columns:90px 1fr 70px 90px;gap:8px;align-items:center;box-shadow:0 1px 4px rgba(15,23,42,.04);border:1px solid #f1f5f9;font-size:12px}}
 .tracker-filter{{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px}}
@@ -1174,6 +1184,8 @@ details[open] summary::before{{content:"▼ ";}}
   .tracker-main-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .chart-grid{{grid-template-columns:1fr}}
   .holding-row{{grid-template-columns:1fr 1fr}}
+  .holding-detail-grid{{grid-template-columns:1fr 1fr}}
+  .holding-trade-row{{grid-template-columns:1fr 1fr}}
   .recent-row{{grid-template-columns:74px 1fr;gap:4px}}
   .tracker-top{{display:block}}
   .tracker-toolbar{{margin-top:10px}}
@@ -1801,7 +1813,7 @@ function renderTracker() {{
   var todayKey = new Date().toISOString().slice(0,10);
   var dailyRealized = trackerRealizedByDate(rows);
   var todayPnl = dailyRealized[todayKey] || 0;
-  if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>已實現 <b style="color:'+(summaryData.realized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</b></span><span>未實現 <b style="color:'+(summaryData.unrealized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span></div>';
+  if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>已實現損益 <b style="color:'+(summaryData.realized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</b></span><span>目前未實現損益 <b style="color:'+(summaryData.unrealized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span></div>';
   var dayColor = todayPnl>0?'#16a34a':todayPnl<0?'#dc2626':'#64748b';
   var pnlColorNew = summaryData.totalPnl>0?'#16a34a':summaryData.totalPnl<0?'#dc2626':'#64748b';
   summary.innerHTML =
@@ -1820,11 +1832,33 @@ function renderTracker() {{
     '</section>';
   var holdingHtml = openPositions.length ? '<div class="holding-list">' + openPositions.map(function(p) {{
     var color = p.unrealized_pnl > 0 ? '#16a34a' : p.unrealized_pnl < 0 ? '#dc2626' : '#64748b';
-    return '<div class="holding-row"><div><b>'+trackerEscape(p.name || p.symbol)+'</b><div class="holding-cell">'+trackerEscape(p.symbol)+'｜'+trackerWarrantLabel(p.warrant_type)+'</div></div>' +
+    var totalColor = p.total_pnl > 0 ? '#16a34a' : p.total_pnl < 0 ? '#dc2626' : '#64748b';
+    var positionType = p.asset_type === 'stock' ? '股票' : '權證｜' + trackerWarrantLabel(p.warrant_type);
+    var tradeRows = p.transactions.slice().sort(function(a,b){{return String(b.trade_date||'').localeCompare(String(a.trade_date||''));}}).map(function(tx) {{
+      var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
+      var costs = Number(tx.fee || 0) + Number(tx.tax || 0) + Number(tx.other_cost || 0);
+      var sideColor = tx.side === 'sell' ? '#ea580c' : '#1d4ed8';
+      return '<div class="holding-trade-row"><div>'+trackerEscape(tx.trade_date || '')+'</div><div style="font-weight:800;color:'+sideColor+'">'+(tx.side === 'sell' ? '賣出' : '買進')+'</div><div>'+trackerPrice(tx.price)+' × '+trackerMoney(tx.quantity)+'</div><div style="text-align:right">'+trackerMoney(gross)+'<br><span style="color:#94a3b8">費用 '+trackerMoney(costs)+'</span></div></div>';
+    }}).join('');
+    return '<details class="holding-card"><summary><div class="holding-row"><div><b>'+trackerEscape(p.name || p.symbol)+'</b><div class="holding-cell">'+trackerEscape(p.symbol)+'｜'+trackerEscape(positionType)+'</div><div class="holding-hint">點開看細項</div></div>' +
       '<div class="holding-cell">平均成本<strong>'+trackerPrice(p.average_cost)+'</strong></div>' +
       '<div class="holding-cell">現價<strong>'+trackerPrice(p.current_price)+'</strong></div>' +
       '<div class="holding-cell">未實現損益<strong style="color:'+color+'">'+(p.unrealized_pnl>0?'+':'')+trackerMoney(p.unrealized_pnl)+'</strong></div>' +
-      '<div class="holding-cell">報酬率<strong style="color:'+color+'">'+(p.unrealized_return_pct>0?'+':'')+p.unrealized_return_pct.toFixed(2)+'%</strong></div></div>';
+      '<div class="holding-cell">報酬率<strong style="color:'+color+'">'+(p.unrealized_return_pct>0?'+':'')+p.unrealized_return_pct.toFixed(2)+'%</strong></div></div></summary>' +
+      '<div class="holding-detail">' +
+        '<div class="holding-detail-grid">' +
+          '<div class="holding-detail-item">累計買進<strong>'+trackerMoney(p.total_buy_quantity)+'</strong></div>' +
+          '<div class="holding-detail-item">已賣出<strong>'+trackerMoney(p.total_sell_quantity)+'</strong></div>' +
+          '<div class="holding-detail-item">剩餘數量<strong>'+trackerMoney(p.remaining_quantity)+'</strong></div>' +
+          '<div class="holding-detail-item">持倉成本<strong>'+trackerMoney(p.remaining_cost)+'</strong></div>' +
+          '<div class="holding-detail-item">持倉市值<strong>'+trackerMoney(p.market_value)+'</strong></div>' +
+          '<div class="holding-detail-item">已實現損益<strong style="color:'+(p.realized_pnl>=0?'#16a34a':'#dc2626')+'">'+(p.realized_pnl>0?'+':'')+trackerMoney(p.realized_pnl)+'</strong></div>' +
+          '<div class="holding-detail-item">目前未實現損益<strong style="color:'+color+'">'+(p.unrealized_pnl>0?'+':'')+trackerMoney(p.unrealized_pnl)+'</strong></div>' +
+          '<div class="holding-detail-item">總損益<strong style="color:'+totalColor+'">'+(p.total_pnl>0?'+':'')+trackerMoney(p.total_pnl)+'</strong></div>' +
+        '</div>' +
+        '<div class="mini-actions"><button data-tracker-action="prefill" data-pos-key="'+trackerEscape(p.key)+'" data-side="buy">加碼</button><button data-tracker-action="prefill" data-pos-key="'+trackerEscape(p.key)+'" data-side="sell">部分賣出</button><button data-tracker-action="prefill" data-pos-key="'+trackerEscape(p.key)+'" data-side="sell" data-all-out="1">全部出場</button><button data-tracker-action="prompt-price" data-pos-key="'+trackerEscape(p.key)+'" data-current-price="'+trackerEscape(p.current_price)+'">更新現價</button></div>' +
+        '<div class="section-label" style="margin-top:14px">交易明細</div><div class="holding-trades">'+(tradeRows || '<div style="color:#94a3b8;font-size:12px">尚無交易明細。</div>')+'</div>' +
+      '</div></details>';
   }}).join('') + '</div>' : '<p style="color:#94a3b8;padding:10px 0">目前沒有持倉。</p>';
   var sortedRows = rows.slice().sort(function(a,b){{return String(b.trade_date||'').localeCompare(String(a.trade_date||'')) || String(b.created_at||'').localeCompare(String(a.created_at||''));}});
   var recentRows = sortedRows.slice(0,5).map(function(tx) {{
