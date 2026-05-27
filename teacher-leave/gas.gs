@@ -14,7 +14,7 @@
 
 const SPREADSHEET_ID = '請貼上你的試算表_ID';
 const SHEET_NAME = '老師請假申請';
-// 留空時會寄到部署 Apps Script 的帳號；也可以改成指定信箱，例如：'hank@example.com'
+// 請填寫要收到老師請假通知的信箱，例如：'hank@example.com'
 const NOTIFY_EMAIL = '';
 
 const HEADERS = [
@@ -31,7 +31,8 @@ const HEADERS = [
   'reschedule_time',
   'leave_reason',
   'note',
-  'admin_status'
+  'admin_status',
+  'notification_status'
 ];
 
 function doGet(e) {
@@ -97,12 +98,16 @@ function getSheet_() {
       .setFontColor('white')
       .setFontWeight('bold');
     sheet.setFrozenRows(1);
+  } else {
+    ensureHeaders_(sheet);
   }
 
   return sheet;
 }
 
 function appendSubmission_(sheet, data) {
+  const notificationStatus = sendLeaveNotification_(data);
+
   sheet.appendRow([
     data.submitted_at || new Date(),
     data.teacher_name || '',
@@ -117,10 +122,22 @@ function appendSubmission_(sheet, data) {
     data.reschedule_time || '',
     data.leave_reason || '',
     data.note || '',
-    data.admin_status || '待確認'
+    data.admin_status || '待確認',
+    notificationStatus
   ]);
+}
 
-  sendLeaveNotification_(data);
+function ensureHeaders_(sheet) {
+  const currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const missingHeaders = HEADERS.filter(header => currentHeaders.indexOf(header) === -1);
+  if (!missingHeaders.length) return;
+
+  const startColumn = sheet.getLastColumn() + 1;
+  sheet.getRange(1, startColumn, 1, missingHeaders.length).setValues([missingHeaders]);
+  sheet.getRange(1, startColumn, 1, missingHeaders.length)
+    .setBackground('#D96B2A')
+    .setFontColor('white')
+    .setFontWeight('bold');
 }
 
 function updateAdminStatus_(sheet, row, status) {
@@ -131,8 +148,8 @@ function updateAdminStatus_(sheet, row, status) {
 
 function sendLeaveNotification_(data) {
   try {
-    const recipient = NOTIFY_EMAIL || Session.getEffectiveUser().getEmail();
-    if (!recipient) return;
+    const recipient = String(NOTIFY_EMAIL || '').trim();
+    if (!recipient) return '通知未寄出：尚未設定 NOTIFY_EMAIL';
 
     const leaveDates = data.affected_period || data.leave_date || '未填';
     const subject = '【武樂】老師請假申請通知 - ' + (data.teacher_name || '未填姓名');
@@ -158,9 +175,28 @@ function sendLeaveNotification_(data) {
       body: body,
       name: '武樂老師請假表'
     });
+
+    return '通知已寄出：' + recipient;
   } catch (err) {
-    console.log('通知信寄送失敗：' + err.message);
+    return '通知寄送失敗：' + err.message;
   }
+}
+
+function testEmailNotification() {
+  const result = sendLeaveNotification_({
+    submitted_at: new Date(),
+    teacher_name: '測試老師',
+    leave_type: '通知測試',
+    leave_date: '2026-05-27',
+    affected_class: '測試課程',
+    affected_period: '',
+    substitute_status: '測試通知',
+    substitute_teacher: '',
+    leave_reason: '測試',
+    note: '如果收到這封信，代表 MailApp 通知設定成功。',
+    admin_status: '待確認'
+  });
+  Logger.log(result);
 }
 
 function formatDateTime_(value) {
