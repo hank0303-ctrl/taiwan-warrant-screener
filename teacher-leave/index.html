@@ -242,8 +242,21 @@
 
       <section id="singleCard" class="card">
         <div class="field">
-          <label class="title" for="single_date">單堂請假日期<span class="req">*</span></label>
-          <input id="single_date" name="single_date" type="date">
+          <label class="title">單堂請假日期<span class="req">*</span></label>
+          <p class="help">請直接點選請假的日期。</p>
+          <div class="calendar-head">
+            <button class="month-btn" type="button" id="singlePrevMonth">上一月</button>
+            <div>
+              <strong id="singleCalendarTitle"></strong>
+              <span id="singleSelectedText">尚未選擇日期</span>
+            </div>
+            <button class="month-btn" type="button" id="singleNextMonth">下一月</button>
+          </div>
+          <div class="calendar-weekdays">
+            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+          </div>
+          <div id="singleDateGrid" class="date-grid"></div>
+          <input id="single_date" name="single_date" type="hidden">
         </div>
 
         <div class="field">
@@ -351,6 +364,9 @@
     const errorMsg = document.getElementById('errorMsg');
     const successBox = document.getElementById('successBox');
     const selectedDates = new Set();
+    let singleSelectedDate = '';
+    let singleCalendarCursor = new Date();
+    singleCalendarCursor.setDate(1);
     let calendarCursor = new Date();
     calendarCursor.setDate(1);
 
@@ -383,11 +399,11 @@
         selectedDates.clear();
         renderCalendar();
       } else if (isMulti) {
-        document.getElementById('single_date').value = '';
+        clearSingleDate();
         document.getElementById('single_class').value = '';
         document.getElementById('other_leave_detail').value = '';
       } else if (isOther) {
-        document.getElementById('single_date').value = '';
+        clearSingleDate();
         document.getElementById('single_class').value = '';
         document.getElementById('multi_class').value = '';
         selectedDates.clear();
@@ -405,6 +421,39 @@
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
+    }
+
+    function renderSingleCalendar() {
+      const grid = document.getElementById('singleDateGrid');
+      const title = document.getElementById('singleCalendarTitle');
+      const selectedText = document.getElementById('singleSelectedText');
+      const year = singleCalendarCursor.getFullYear();
+      const month = singleCalendarCursor.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const titleMonth = String(month + 1).padStart(2, '0');
+
+      title.textContent = `${year}-${titleMonth}`;
+      selectedText.textContent = singleSelectedDate ? `已選 ${singleSelectedDate}` : '尚未選擇日期';
+      document.getElementById('single_date').value = singleSelectedDate;
+
+      const cells = [];
+      for (let i = 0; i < firstDay; i += 1) {
+        cells.push('<button class="date-cell blank" type="button" tabindex="-1"></button>');
+      }
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(year, month, day);
+        const iso = formatIsoDate(date);
+        const selected = singleSelectedDate === iso ? ' selected' : '';
+        cells.push(`<button class="date-cell${selected}" type="button" data-single-date="${iso}">${day}</button>`);
+      }
+      grid.innerHTML = cells.join('');
+    }
+
+    function clearSingleDate() {
+      singleSelectedDate = '';
+      document.getElementById('single_date').value = '';
+      renderSingleCalendar();
     }
 
     function renderCalendar() {
@@ -502,6 +551,11 @@
       event.preventDefault();
       errorMsg.classList.remove('show');
       errorMsg.textContent = '送出失敗，請稍後再試，或直接聯繫教室負責人。';
+      if (radioValue('leave_type') === '單堂課請假' && !singleSelectedDate) {
+        errorMsg.textContent = '請先選擇單堂請假日期。';
+        errorMsg.classList.add('show');
+        return;
+      }
       if (radioValue('leave_type') === '多堂課請假' && selectedDates.size === 0) {
         errorMsg.textContent = '請先在月曆上選擇受到影響的日期。';
         errorMsg.classList.add('show');
@@ -516,7 +570,9 @@
         await submitPayload(buildPayload());
         form.reset();
         selectedDates.clear();
+        singleSelectedDate = '';
         updateVisibility();
+        renderSingleCalendar();
         renderCalendar();
         form.classList.add('hidden');
         successBox.classList.add('show');
@@ -530,7 +586,22 @@
       }
     });
 
+    document.getElementById('singlePrevMonth').addEventListener('click', () => {
+      singleCalendarCursor.setMonth(singleCalendarCursor.getMonth() - 1);
+      renderSingleCalendar();
+    });
+    document.getElementById('singleNextMonth').addEventListener('click', () => {
+      singleCalendarCursor.setMonth(singleCalendarCursor.getMonth() + 1);
+      renderSingleCalendar();
+    });
+    document.getElementById('singleDateGrid').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-single-date]');
+      if (!button) return;
+      singleSelectedDate = button.dataset.singleDate;
+      renderSingleCalendar();
+    });
     renderCalendar();
+    renderSingleCalendar();
     updateVisibility();
   </script>
 </body>
