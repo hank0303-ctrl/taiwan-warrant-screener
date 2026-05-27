@@ -1740,25 +1740,48 @@ function trackerDonut(summaryData) {{
   var legend = parts.map(function(p){{return '<div><span style="display:inline-block;width:9px;height:9px;background:'+p[2]+';border-radius:50%;margin-right:6px"></span>'+p[0]+' '+trackerMoney(p[1])+'</div>';}}).join('');
   return '<div class="donut-wrap"><svg width="150" height="150" viewBox="0 0 40 40">'+circles+'<text x="20" y="21" text-anchor="middle" font-size="4" fill="#555">資產</text></svg><div class="donut-legend">'+legend+'</div></div>';
 }}
-function trackerMonthlyBars(positions) {{
-  var months = {{}};
-  positions.forEach(function(p) {{
-    p.transactions.forEach(function(tx) {{
-      if (tx.side === 'sell') {{
-        var m = trackerMonthKey(tx.trade_date);
-        if (!months[m]) months[m] = 0;
-        months[m] += p.realized_pnl;
-      }}
-    }});
+function trackerRealizedByDate(rows) {{
+  var state = {{}};
+  var daily = {{}};
+  rows.slice().sort(function(a, b) {{
+    return String(a.trade_date || '').localeCompare(String(b.trade_date || '')) ||
+      String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+      String(a.id || '').localeCompare(String(b.id || ''));
+  }}).forEach(function(tx) {{
+    var key = trackerPositionKey(tx);
+    if (!state[key]) state[key] = {{qty:0, cost:0}};
+    var st = state[key];
+    var qty = Number(tx.quantity || 0);
+    var price = Number(tx.price || 0);
+    var costs = Number(tx.fee || 0) + Number(tx.tax || 0) + Number(tx.other_cost || 0);
+    var gross = price * qty;
+    if (tx.side === 'sell') {{
+      var sellQty = Math.min(qty, st.qty);
+      var avg = st.qty > 0 ? st.cost / st.qty : 0;
+      var costRemoved = avg * sellQty;
+      var pnl = (price * sellQty - costs) - costRemoved;
+      var d = tx.trade_date || new Date().toISOString().slice(0,10);
+      if (!daily[d]) daily[d] = 0;
+      daily[d] += pnl;
+      st.qty -= sellQty;
+      st.cost = Math.max(0, st.cost - costRemoved);
+    }} else {{
+      st.qty += qty;
+      st.cost += gross + costs;
+    }}
   }});
-  var keys = Object.keys(months).sort().slice(-6);
-  if (!keys.length) keys = [trackerMonthKey(new Date().toISOString().slice(0,10))];
-  var maxAbs = Math.max.apply(null, keys.map(function(k){{return Math.abs(months[k] || 0);}})) || 1;
+  return daily;
+}}
+function trackerDailyBars(rows) {{
+  var daily = trackerRealizedByDate(rows);
+  var keys = Object.keys(daily).sort().slice(-14);
+  if (!keys.length) keys = [new Date().toISOString().slice(0,10)];
+  var maxAbs = Math.max.apply(null, keys.map(function(k){{return Math.abs(daily[k] || 0);}})) || 1;
   var bars = keys.map(function(k) {{
-    var v = months[k] || 0;
+    var v = daily[k] || 0;
     var height = Math.max(3, Math.abs(v) / maxAbs * 80);
     var color = v >= 0 ? '#27ae60' : '#e74c3c';
-    return '<div style="display:flex;flex-direction:column;align-items:center;gap:5px;justify-content:flex-end;height:120px"><div style="font-size:11px;color:'+color+'">'+(v>0?'+':'')+trackerMoney(v)+'</div><div style="width:28px;height:'+height+'px;background:'+color+';border-radius:5px"></div><div style="font-size:11px;color:#999">'+k.slice(5)+'</div></div>';
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:5px;justify-content:flex-end;height:120px"><div style="font-size:11px;color:'+color+'">'+(v>0?'+':'')+trackerMoney(v)+'</div><div style="width:24px;height:'+height+'px;background:'+color+';border-radius:5px"></div><div style="font-size:11px;color:#999">'+k.slice(5).replace('-', '/')+'</div></div>';
   }}).join('');
   return '<div style="display:flex;gap:10px;align-items:flex-end;justify-content:space-around;height:160px">'+bars+'</div>';
 }}
@@ -1775,25 +1798,25 @@ function renderTracker() {{
   var summaryData = trackerCalcSummary(rows, positions);
   var totalAssets = summaryData.availableCash + summaryData.marketValue;
   var pnlColor = summaryData.totalPnl > 0 ? '#27ae60' : summaryData.totalPnl < 0 ? '#e74c3c' : '#555';
-  var monthKey = new Date().toISOString().slice(0,7);
-  var monthlyPnl = 0;
-  positions.forEach(function(p){{ if (p.status === 'closed' && p.transactions.some(function(tx){{return trackerMonthKey(tx.trade_date) === monthKey;}})) monthlyPnl += p.realized_pnl; }});
+  var todayKey = new Date().toISOString().slice(0,10);
+  var dailyRealized = trackerRealizedByDate(rows);
+  var todayPnl = dailyRealized[todayKey] || 0;
   if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>已實現 <b style="color:'+(summaryData.realized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</b></span><span>未實現 <b style="color:'+(summaryData.unrealized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span></div>';
-  var monthColor = monthlyPnl>0?'#16a34a':monthlyPnl<0?'#dc2626':'#64748b';
+  var dayColor = todayPnl>0?'#16a34a':todayPnl<0?'#dc2626':'#64748b';
   var pnlColorNew = summaryData.totalPnl>0?'#16a34a':summaryData.totalPnl<0?'#dc2626':'#64748b';
   summary.innerHTML =
     '<div class="tracker-main-grid">' +
     '<div class="metric-card primary" style="--accent:#3b82f6"><div class="metric-label">總資產</div><div class="metric-value" style="color:#0f172a">'+trackerMoney(totalAssets)+'</div><div class="metric-note">可用現金 + 持倉市值</div></div>' +
     '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">總損益</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="metric-note">已實現 + 未實現</div></div>' +
     '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">總報酬率</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="metric-note">以投入本金計算</div></div>' +
-    '<div class="metric-card primary" style="--accent:'+monthColor+'"><div class="metric-label">本月損益</div><div class="metric-value" style="color:'+monthColor+'">'+(monthlyPnl>0?'+':'')+trackerMoney(monthlyPnl)+'</div><div class="metric-note">本月已完成交易</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+dayColor+'"><div class="metric-label">今日損益</div><div class="metric-value" style="color:'+dayColor+'">'+(todayPnl>0?'+':'')+trackerMoney(todayPnl)+'</div><div class="metric-note">今日已完成交易</div></div>' +
     '</div>';
   var points = trackerBuildEquityPoints(rows, summaryData);
   var tabs = [['7','7天'],['30','30天'],['90','90天'],['all','全部']].map(function(r){{return '<button class="'+(trackerChartRange===r[0]?'active':'')+'" data-tracker-action="chart-range" data-range="'+r[0]+'">'+r[1]+'</button>';}}).join('');
   var chartHtml = '<section class="chart-grid">' +
     '<div class="chart-card"><div class="chart-title">累積績效曲線 <span class="chart-tabs">'+tabs+'</span></div>'+trackerSvgLine(points)+'</div>' +
     '<div class="chart-card"><div class="chart-title">資產結構</div>'+trackerDonut(summaryData)+'</div>' +
-    '<div class="chart-card" style="grid-column:1/-1"><div class="chart-title">每月損益</div>'+trackerMonthlyBars(positions)+'</div>' +
+    '<div class="chart-card" style="grid-column:1/-1"><div class="chart-title">每日損益</div>'+trackerDailyBars(rows)+'</div>' +
     '</section>';
   var holdingHtml = openPositions.length ? '<div class="holding-list">' + openPositions.map(function(p) {{
     var color = p.unrealized_pnl > 0 ? '#16a34a' : p.unrealized_pnl < 0 ? '#dc2626' : '#64748b';
