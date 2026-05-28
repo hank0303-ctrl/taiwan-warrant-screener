@@ -2,8 +2,8 @@ name: 每日權證報表自動更新
 
 on:
   schedule:
-    # 台灣時間 08:00 = UTC 00:00，週一到週五
-    - cron: '0 0 * * 1-5'
+    # 台灣時間 22:00 = UTC 14:00，週一到週五
+    - cron: '0 14 * * 1-5'
   workflow_dispatch:   # 允許在 GitHub 網頁手動觸發
 
 permissions:

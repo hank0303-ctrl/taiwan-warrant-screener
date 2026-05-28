@@ -1,6 +1,6 @@
 """
 warrant_screener.py — 主程式 v2
-每天 08:00 執行，產出 index.html 並 push GitHub Pages
+每天 22:00 執行，產出 index.html 並 push GitHub Pages
 執行方式：python3 warrant_screener.py
 """
 
@@ -2197,12 +2197,12 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 def main():
     print('權證篩選系統 v2 啟動')
-    print('排程：每天 08:00 執行（TWSE + TPEX 全市場）')
+    print('排程：每天 22:00 執行（TWSE + TPEX 全市場）')
     print('按 Ctrl+C 停止\n')
 
     run_screening()
 
-    schedule.every().day.at('08:00').do(run_screening)
+    schedule.every().day.at('22:00').do(run_screening)
     while True:
         schedule.run_pending()
         time.sleep(30)

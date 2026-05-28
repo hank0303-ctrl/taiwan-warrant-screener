@@ -1,6 +1,6 @@
 # 台灣股票權證輔助篩選系統
 
-每天 08:00 自動從全市場（TWSE + TPEX）篩選適合觀察的認購/認售權證候選清單，產出 HTML 報表。
+每天 22:00 自動從全市場（TWSE + TPEX）篩選適合觀察的認購/認售權證候選清單，產出 HTML 報表。
 
 ## 功能
 
@@ -21,7 +21,7 @@ pip install requests yfinance schedule fubon-neo
 cp warrant_config.py.example warrant_config.py
 # 編輯 warrant_config.py，填入 ID_NUMBER / PASSWORD / CERT_PATH / CERT_PASS
 
-# 執行（啟動後每天 08:00 自動跑）
+# 執行（啟動後每天 22:00 自動跑）
 python3 warrant_screener.py
 ```
 
