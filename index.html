@@ -433,16 +433,21 @@ function trackerCalcSummary(rows, positions) {
     }
     realized += p.realized_pnl;
   });
-  var totalPnl = realized + unrealized;
+  var transactionPnl = realized + unrealized;
+  var availableCash = principal - buySpend + sellIncome;
+  var totalAssets = availableCash + marketValue;
+  var assetPnl = totalAssets - principal;
   return {
     principal: principal,
-    availableCash: principal - buySpend + sellIncome,
+    availableCash: availableCash,
     openCost: Math.max(0, openCost),
     marketValue: marketValue,
     realized: realized,
     unrealized: unrealized,
-    totalPnl: totalPnl,
-    returnPct: principal > 0 ? totalPnl / principal * 100 : 0,
+    transactionPnl: transactionPnl,
+    totalAssets: totalAssets,
+    totalPnl: assetPnl,
+    returnPct: principal > 0 ? assetPnl / principal * 100 : 0,
     usagePct: principal > 0 ? Math.max(0, openCost) / principal * 100 : 0,
     openCount: positions.filter(function(p){return p.status === 'open';}).length,
     closedCount: positions.filter(function(p){return p.status === 'closed' && p.total_buy_quantity > 0;}).length,
@@ -737,19 +742,21 @@ function renderTracker() {
   var positions = trackerBuildPositions(rows);
   var openPositions = positions.filter(function(p){return p.status === 'open';});
   var summaryData = trackerCalcSummary(rows, positions);
-  var totalAssets = summaryData.availableCash + summaryData.marketValue;
+  var totalAssets = summaryData.totalAssets;
   var pnlColor = summaryData.totalPnl > 0 ? '#27ae60' : summaryData.totalPnl < 0 ? '#e74c3c' : '#555';
   var todayKey = new Date().toISOString().slice(0,10);
   var dailyRealized = trackerRealizedByDate(rows);
   var todayPnl = dailyRealized[todayKey] || 0;
-  if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>已實現損益 <b style="color:'+(summaryData.realized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</b></span><span>目前未實現損益 <b style="color:'+(summaryData.unrealized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span></div>';
+  var diffPnl = summaryData.totalPnl - summaryData.transactionPnl;
+  var diffHtml = Math.abs(diffPnl) >= 1 ? '<span>資產/交易差額 <b style="color:#f59e0b">'+(diffPnl>0?'+':'')+trackerMoney(diffPnl)+'</b></span>' : '';
+  if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>投入本金 <b>'+trackerMoney(summaryData.principal)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span><span>持倉市值 <b>'+trackerMoney(summaryData.marketValue)+'</b></span><span>交易損益 <b style="color:'+(summaryData.transactionPnl>=0?'#16a34a':'#dc2626')+'">'+(summaryData.transactionPnl>0?'+':'')+trackerMoney(summaryData.transactionPnl)+'</b></span><span>目前未實現損益 <b style="color:'+(summaryData.unrealized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</b></span>'+diffHtml+'</div>';
   var dayColor = todayPnl>0?'#16a34a':todayPnl<0?'#dc2626':'#64748b';
   var pnlColorNew = summaryData.totalPnl>0?'#16a34a':summaryData.totalPnl<0?'#dc2626':'#64748b';
   summary.innerHTML =
     '<div class="tracker-main-grid">' +
     '<div class="metric-card primary" style="--accent:#3b82f6"><div class="metric-label">總資產</div><div class="metric-value" style="color:#0f172a">'+trackerMoney(totalAssets)+'</div><div class="metric-note">可用現金 + 持倉市值</div></div>' +
-    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">總損益</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="metric-note">已實現 + 未實現</div></div>' +
-    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">總報酬率</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="metric-note">以投入本金計算</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">資產損益</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="metric-note">總資產 - 投入本金</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">資產報酬率</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="metric-note">資產損益 / 投入本金</div></div>' +
     '<div class="metric-card primary" style="--accent:'+dayColor+'"><div class="metric-label">今日損益</div><div class="metric-value" style="color:'+dayColor+'">'+(todayPnl>0?'+':'')+trackerMoney(todayPnl)+'</div><div class="metric-note">今日已完成交易</div></div>' +
     '</div>';
   var points = trackerBuildEquityPoints(rows, summaryData);
