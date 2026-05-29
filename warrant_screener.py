@@ -1438,6 +1438,7 @@ function trackerBuildPositions(rows) {{
         remaining_quantity: 0,
         remaining_cost: 0,
         realized_pnl: 0,
+        total_sold_cost: 0,
         buy_spend: 0,
         sell_income: 0,
         transactions: []
@@ -1458,6 +1459,7 @@ function trackerBuildPositions(rows) {{
       p.total_sell_quantity += sellQty;
       p.remaining_quantity -= sellQty;
       p.remaining_cost = Math.max(0, p.remaining_cost - costRemoved);
+      p.total_sold_cost += costRemoved;
       p.realized_pnl += (price * sellQty - costs) - costRemoved;
       p.sell_income += gross - costs;
     }} else {{
@@ -1489,7 +1491,7 @@ function trackerBuildPositions(rows) {{
 }}
 function trackerCalcSummary(rows, positions) {{
   var principal = trackerLoadBudget();
-  var buySpend = 0, sellIncome = 0, openCost = 0, marketValue = 0, realized = 0, unrealized = 0;
+  var buySpend = 0, sellIncome = 0, openCost = 0, marketValue = 0, realized = 0, unrealized = 0, soldCost = 0;
   rows.forEach(function(tx) {{
     var gross = Number(tx.price || 0) * Number(tx.quantity || 0);
     var costs = Number(tx.fee || 0) + Number(tx.tax || 0) + Number(tx.other_cost || 0);
@@ -1503,11 +1505,12 @@ function trackerCalcSummary(rows, positions) {{
       unrealized += p.unrealized_pnl;
     }}
     realized += p.realized_pnl;
+    soldCost += Number(p.total_sold_cost || 0);
   }});
   var transactionPnl = realized + unrealized;
   var availableCash = principal - buySpend + sellIncome;
   var totalAssets = availableCash + marketValue;
-  var assetPnl = totalAssets - principal;
+  var positionReturnPct = openCost > 0 ? unrealized / openCost * 100 : 0;
   return {{
     principal: principal,
     availableCash: availableCash,
@@ -1516,9 +1519,11 @@ function trackerCalcSummary(rows, positions) {{
     realized: realized,
     unrealized: unrealized,
     transactionPnl: transactionPnl,
+    soldCost: soldCost,
     totalAssets: totalAssets,
-    totalPnl: assetPnl,
-    returnPct: principal > 0 ? assetPnl / principal * 100 : 0,
+    totalPnl: transactionPnl,
+    returnPct: buySpend > 0 ? transactionPnl / buySpend * 100 : 0,
+    positionReturnPct: positionReturnPct,
     usagePct: principal > 0 ? Math.max(0, openCost) / principal * 100 : 0,
     openCount: positions.filter(function(p){{return p.status === 'open';}}).length,
     closedCount: positions.filter(function(p){{return p.status === 'closed' && p.total_buy_quantity > 0;}}).length,
@@ -1740,10 +1745,8 @@ function trackerSvgLine(points) {{
 }}
 function trackerDonut(summaryData) {{
   var parts = [
-    ['可用現金', Math.max(0, summaryData.availableCash), '#555'],
-    ['持倉市值', Math.max(0, summaryData.marketValue), '#27ae60'],
-    ['已實現損益', Math.max(0, summaryData.realized), '#1f7a5c'],
-    ['未實現損益', Math.max(0, summaryData.unrealized), '#7f8c8d']
+    ['已出場成本', Math.max(0, summaryData.soldCost), '#64748b'],
+    ['目前持倉成本', Math.max(0, summaryData.openCost), '#27ae60']
   ];
   var total = parts.reduce(function(s,p){{return s+p[1];}},0) || 1;
   var acc = 0;
@@ -1813,28 +1816,24 @@ function renderTracker() {{
   var positions = trackerBuildPositions(rows);
   var openPositions = positions.filter(function(p){{return p.status === 'open';}});
   var summaryData = trackerCalcSummary(rows, positions);
-  var totalAssets = summaryData.totalAssets;
-  var pnlColor = summaryData.totalPnl > 0 ? '#27ae60' : summaryData.totalPnl < 0 ? '#e74c3c' : '#555';
   var todayKey = new Date().toISOString().slice(0,10);
   var dailyRealized = trackerRealizedByDate(rows);
   var todayPnl = dailyRealized[todayKey] || 0;
-  var diffPnl = summaryData.totalPnl - summaryData.transactionPnl;
-  var diffHtml = Math.abs(diffPnl) >= 1 ? '<span>資產/交易差額 <b style="color:#f59e0b">'+(diffPnl>0?'+':'')+trackerMoney(diffPnl)+'</b></span>' : '';
-  if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>投入本金 <b>'+trackerMoney(summaryData.principal)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span><span>持倉市值 <b>'+trackerMoney(summaryData.marketValue)+'</b></span><span>交易損益 <b style="color:'+(summaryData.transactionPnl>=0?'#16a34a':'#dc2626')+'">'+(summaryData.transactionPnl>0?'+':'')+trackerMoney(summaryData.transactionPnl)+'</b></span><span>目前未實現損益 <b style="color:'+(summaryData.unrealized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</b></span>'+diffHtml+'</div>';
+  if (cashDetail) cashDetail.innerHTML = '<div class="cash-detail-row"><span>累計買進成本 <b>'+trackerMoney(summaryData.buySpend)+'</b></span><span>已出場成本 <b>'+trackerMoney(summaryData.soldCost)+'</b></span><span>目前持倉成本 <b>'+trackerMoney(summaryData.openCost)+'</b></span><span>持倉市值 <b>'+trackerMoney(summaryData.marketValue)+'</b></span><span>已實現損益 <b style="color:'+(summaryData.realized>=0?'#16a34a':'#dc2626')+'">'+(summaryData.realized>0?'+':'')+trackerMoney(summaryData.realized)+'</b></span><span>交易總損益 <b style="color:'+(summaryData.transactionPnl>=0?'#16a34a':'#dc2626')+'">'+(summaryData.transactionPnl>0?'+':'')+trackerMoney(summaryData.transactionPnl)+'</b></span><span>可用現金 <b>'+trackerMoney(summaryData.availableCash)+'</b></span></div>';
   var dayColor = todayPnl>0?'#16a34a':todayPnl<0?'#dc2626':'#64748b';
-  var pnlColorNew = summaryData.totalPnl>0?'#16a34a':summaryData.totalPnl<0?'#dc2626':'#64748b';
+  var positionColor = summaryData.unrealized>0?'#16a34a':summaryData.unrealized<0?'#dc2626':'#64748b';
   summary.innerHTML =
     '<div class="tracker-main-grid">' +
-    '<div class="metric-card primary" style="--accent:#3b82f6"><div class="metric-label">總資產</div><div class="metric-value" style="color:#0f172a">'+trackerMoney(totalAssets)+'</div><div class="metric-note">可用現金 + 持倉市值</div></div>' +
-    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">資產損益</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.totalPnl>0?'+':'')+trackerMoney(summaryData.totalPnl)+'</div><div class="metric-note">總資產 - 投入本金</div></div>' +
-    '<div class="metric-card primary" style="--accent:'+pnlColorNew+'"><div class="metric-label">資產報酬率</div><div class="metric-value" style="color:'+pnlColorNew+'">'+(summaryData.returnPct>0?'+':'')+summaryData.returnPct.toFixed(2)+'%</div><div class="metric-note">資產損益 / 投入本金</div></div>' +
+    '<div class="metric-card primary" style="--accent:#3b82f6"><div class="metric-label">持倉市值</div><div class="metric-value" style="color:#0f172a">'+trackerMoney(summaryData.marketValue)+'</div><div class="metric-note">目前權證部位價值</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+positionColor+'"><div class="metric-label">目前部位損益</div><div class="metric-value" style="color:'+positionColor+'">'+(summaryData.unrealized>0?'+':'')+trackerMoney(summaryData.unrealized)+'</div><div class="metric-note">持倉市值 - 目前持倉成本</div></div>' +
+    '<div class="metric-card primary" style="--accent:'+positionColor+'"><div class="metric-label">目前部位報酬率</div><div class="metric-value" style="color:'+positionColor+'">'+(summaryData.positionReturnPct>0?'+':'')+summaryData.positionReturnPct.toFixed(2)+'%</div><div class="metric-note">目前部位損益 / 持倉成本</div></div>' +
     '<div class="metric-card primary" style="--accent:'+dayColor+'"><div class="metric-label">今日損益</div><div class="metric-value" style="color:'+dayColor+'">'+(todayPnl>0?'+':'')+trackerMoney(todayPnl)+'</div><div class="metric-note">今日已完成交易</div></div>' +
     '</div>';
   var points = trackerBuildEquityPoints(rows, summaryData);
   var tabs = [['7','7天'],['30','30天'],['90','90天'],['all','全部']].map(function(r){{return '<button class="'+(trackerChartRange===r[0]?'active':'')+'" data-tracker-action="chart-range" data-range="'+r[0]+'">'+r[1]+'</button>';}}).join('');
   var chartHtml = '<section class="chart-grid">' +
     '<div class="chart-card"><div class="chart-title">累積績效曲線 <span class="chart-tabs">'+tabs+'</span></div>'+trackerSvgLine(points)+'</div>' +
-    '<div class="chart-card"><div class="chart-title">資產結構</div>'+trackerDonut(summaryData)+'</div>' +
+    '<div class="chart-card"><div class="chart-title">成本分布</div>'+trackerDonut(summaryData)+'</div>' +
     '<div class="chart-card" style="grid-column:1/-1"><div class="chart-title">每日損益</div>'+trackerDailyBars(rows)+'</div>' +
     '</section>';
   var holdingHtml = openPositions.length ? '<div class="holding-list">' + openPositions.map(function(p) {{
