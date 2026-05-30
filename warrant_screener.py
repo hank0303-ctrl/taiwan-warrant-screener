@@ -39,6 +39,7 @@ OUTPUT_PATH = os.path.join(os.path.dirname(__file__), 'index.html')
 
 STRONG_STOCK_MIN_SCORE = 58   # 認購標的門檻
 WEAK_STOCK_MIN_SCORE   = 55   # 認售標的門檻
+MIN_SAFE_REPORT_CANDIDATES = 1000  # 避免資料源異常時用極少候選覆蓋正常報表
 
 
 def _fmt_pct(v):
@@ -180,6 +181,16 @@ def run_screening():
           f'  資料不足: {len(insufficient)}  高風險排除: {len(high_risk)}')
 
     elapsed = (datetime.now() - start_time).seconds
+    total_candidates = len(formal_calls) + len(formal_puts) + len(insufficient) + len(high_risk)
+    if len(all_warrants) >= 10000 and total_candidates < MIN_SAFE_REPORT_CANDIDATES:
+        print(
+            f'\n[警告] 候選數異常偏低：全市場權證 {len(all_warrants)} 支，'
+            f'但候選只剩 {total_candidates} 支。'
+        )
+        print('[警告] 可能是歷史行情 / 強弱勢資料源暫時失真，本次不覆蓋既有報表。')
+        print('='*55)
+        return None
+
     print(f'\n[完成] 耗時 {elapsed}s，寫出報表...')
     html = generate_html(
         strong_stocks, weak_stocks, stock_indicators,
