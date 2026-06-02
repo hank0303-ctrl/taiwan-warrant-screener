@@ -47,7 +47,11 @@ function doPost(e) {
     if (!row[0]) row[0] = new Date().toISOString();
     if (!row[20]) row[20] = '未回覆';
 
-    sheet.appendRow(row);
+    const nextRow = sheet.getLastRow() + 1;
+    sheet.getRange(nextRow, 1, 1, HEADERS.length)
+      .setNumberFormat('@')
+      .setValues([row.map((value) => String(value || ''))]);
+
     return output_({ status: 'success' });
   } catch (err) {
     return output_({ status: 'error', message: err.message });
@@ -85,6 +89,8 @@ function getSheet_() {
       .setFontWeight('bold');
     sheet.setFrozenRows(1);
   }
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), HEADERS.length)
+    .setNumberFormat('@');
 
   return sheet;
 }
