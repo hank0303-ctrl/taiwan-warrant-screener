@@ -814,6 +814,7 @@
   <script>
     const STORAGE_KEY = "wule_course_wishlist_submissions";
     const DRAFT_KEY = "wule_course_wishlist_draft";
+    // Paste the deployed Google Apps Script Web App URL here.
     const API_ENDPOINT = "";
 
     const form = document.getElementById("wishlistForm");
@@ -1004,13 +1005,13 @@
     }
 
     async function sendToApi(payload) {
-      if (!API_ENDPOINT) return;
-      const response = await fetch(API_ENDPOINT, {
+      if (!API_ENDPOINT) throw new Error("API endpoint is not configured");
+      await fetch(API_ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(toApiPayload(payload))
       });
-      if (!response.ok) throw new Error("API request failed");
     }
 
     form.addEventListener("change", (event) => {
@@ -1044,7 +1045,7 @@
         successView.classList.add("show");
       } catch (error) {
         saveLocal(payload);
-        showError("目前網路送出不穩，我們已先保留你的填寫內容。請稍後再試，或直接用 LINE 聯繫武樂。");
+        showError("目前表單尚未連上後台，資料只先保留在這台裝置。請先透過 LINE 聯繫武樂，或稍後再送出。");
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = "送出課程許願";

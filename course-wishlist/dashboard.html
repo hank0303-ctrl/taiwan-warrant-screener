@@ -409,6 +409,8 @@
 
   <script>
     const STORAGE_KEY = "wule_course_wishlist_submissions";
+    // Paste the deployed Google Apps Script Web App URL here.
+    const API_ENDPOINT = "";
     const adultCategories = ["瑜伽", "伸展放鬆", "瑜伽輪", "ARC 脊椎訓練", "肌力訓練", "階梯有氧", "飛輪", "空中環", "舞蹈", "太極／太極劍", "樂齡運動", "皮拉提斯", "成人其他"];
     const childCategories = ["兒童拳擊", "兒童武術", "兒童體適能", "球類運動", "翻滾課", "兒童舞蹈", "寒暑假營隊", "兒童其他"];
 
@@ -422,6 +424,35 @@
       } catch {
         return [];
       }
+    }
+
+    function fetchRemoteSubmissions() {
+      if (!API_ENDPOINT) return Promise.resolve(readSubmissions());
+
+      return new Promise((resolve, reject) => {
+        const callback = `wishlistCallback_${Date.now()}`;
+        const script = document.createElement("script");
+        const separator = API_ENDPOINT.includes("?") ? "&" : "?";
+
+        window[callback] = (payload) => {
+          delete window[callback];
+          script.remove();
+          if (payload && payload.status === "success") {
+            resolve(payload.records || []);
+          } else {
+            reject(new Error(payload && payload.message ? payload.message : "讀取資料失敗"));
+          }
+        };
+
+        script.onerror = () => {
+          delete window[callback];
+          script.remove();
+          reject(new Error("讀取資料失敗"));
+        };
+
+        script.src = `${API_ENDPOINT}${separator}callback=${callback}`;
+        document.body.appendChild(script);
+      });
     }
 
     function uniq(items) {
@@ -520,8 +551,7 @@
       return (record.wish_categories || []).some((item) => childCategories.includes(item));
     }
 
-    function render() {
-      const records = readSubmissions();
+    function renderRecords(records) {
       fillFilters(records);
       const filtered = filterRecords(records);
       const adultCount = filtered.filter(hasAdult).length;
@@ -597,7 +627,7 @@
     }
 
     function exportCsv() {
-      const records = filterRecords(readSubmissions());
+      const records = filterRecords(allRecords);
       const headers = ["submitted_at", "name", "line_name", "phone", "member_status", "wish_categories", "wish_course_name", "wish_reason", "needs", "preferred_times", "ideal_time", "frequency", "preferred_plan", "acceptable_price", "notify_methods", "note", "source", "utm_source", "utm_medium", "utm_campaign", "status"];
       const rows = [headers.join(",")].concat(records.map((record) => headers.map((key) => csvValue(record[key])).join(",")));
       const blob = new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -609,12 +639,30 @@
       URL.revokeObjectURL(url);
     }
 
+    let allRecords = [];
+
+    function render() {
+      renderRecords(allRecords);
+    }
+
+    function loadRecords() {
+      fetchRemoteSubmissions()
+        .then((records) => {
+          allRecords = records;
+          render();
+        })
+        .catch(() => {
+          allRecords = readSubmissions();
+          render();
+        });
+    }
+
     categoryFilter.addEventListener("change", render);
     timeFilter.addEventListener("change", render);
     statusFilter.addEventListener("change", render);
     document.getElementById("exportBtn").addEventListener("click", exportCsv);
 
-    render();
+    loadRecords();
   </script>
 </body>
 </html>
