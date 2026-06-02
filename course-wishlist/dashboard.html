@@ -198,32 +198,86 @@
       font-weight: 900;
       font-size: .78rem;
     }
-    .table-panel {
+    .records-panel {
       padding: 0;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--card);
-      font-size: .88rem;
-    }
-    th, td {
-      padding: 12px 10px;
-      text-align: left;
-      vertical-align: top;
+    .records-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px;
       border-bottom: 1px solid var(--line);
-    }
-    th {
-      position: sticky;
-      top: 63px;
-      z-index: 2;
       background: #fffaf4;
-      font-size: .78rem;
-      color: var(--muted);
-      white-space: nowrap;
     }
-    td {
-      min-width: 110px;
+    .records-head h2 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+    .records-head span {
+      color: var(--muted);
+      font-size: .84rem;
+      font-weight: 800;
+    }
+    .records-list {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+    .record-card {
+      display: grid;
+      gap: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fffdf9;
+    }
+    .record-title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #efe3d8;
+    }
+    .record-title b {
+      display: block;
+      font-size: 1rem;
+    }
+    .record-title small {
+      display: block;
+      color: var(--muted);
+      font-size: .8rem;
+    }
+    .status-pill {
+      flex: 0 0 auto;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: #24313f;
+      color: white;
+      font-size: .76rem;
+      font-weight: 900;
+    }
+    .record-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .record-field {
+      min-width: 0;
+    }
+    .record-field label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: .76rem;
+      font-weight: 900;
+    }
+    .record-field p {
+      margin: 0;
+      color: var(--ink);
+      font-size: .9rem;
+      word-break: break-word;
     }
     .list-tags {
       display: flex;
@@ -264,6 +318,7 @@
     }
     @media (max-width: 920px) {
       .stats, .rank-grid { grid-template-columns: 1fr 1fr; }
+      .record-grid { grid-template-columns: 1fr 1fr; }
       .filters { grid-template-columns: 1fr; }
       .hero { display: block; }
       .hero .actions { margin-top: 12px; }
@@ -273,8 +328,8 @@
       .actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
       .btn { width: 100%; }
       .stats, .rank-grid { grid-template-columns: 1fr; }
-      .table-panel { overflow-x: auto; }
-      th { top: 112px; }
+      .records-head, .record-title { display: grid; }
+      .record-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -342,24 +397,12 @@
       </div>
     </section>
 
-    <section class="panel table-panel">
-      <table>
-        <thead>
-          <tr>
-            <th>送出時間</th>
-            <th>姓名</th>
-            <th>LINE</th>
-            <th>手機</th>
-            <th>狀態</th>
-            <th>許願課程</th>
-            <th>需求</th>
-            <th>可上時段</th>
-            <th>方案/預算</th>
-            <th>來源</th>
-          </tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-      </table>
+    <section class="panel records-panel">
+      <div class="records-head">
+        <h2>已填寫名單列表</h2>
+        <span id="recordCountLabel">0 筆資料</span>
+      </div>
+      <div class="records-list" id="recordsList"></div>
       <div class="empty" id="emptyState">目前還沒有資料。先到填寫頁送出一筆測試，就會出現在這裡。</div>
     </section>
   </main>
@@ -414,6 +457,14 @@
     function tags(items) {
       if (!items || !items.length) return "-";
       return `<div class="list-tags">${items.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>`;
+    }
+
+    function textOrDash(value) {
+      return escapeHtml(value || "-");
+    }
+
+    function joinLines(items) {
+      return items.filter(Boolean).map(escapeHtml).join("<br>") || "-";
     }
 
     function formatDate(iso) {
@@ -488,21 +539,55 @@
       renderRank("needsRank", countItems(filtered, "needs"));
       renderRank("timeRank", countItems(filtered, "preferred_times"));
 
-      const body = document.getElementById("tableBody");
+      const list = document.getElementById("recordsList");
+      document.getElementById("recordCountLabel").textContent = `${filtered.length} 筆資料`;
       document.getElementById("emptyState").style.display = filtered.length ? "none" : "block";
-      body.innerHTML = filtered.map((record) => `
-        <tr>
-          <td>${formatDate(record.submitted_at)}</td>
-          <td><b>${escapeHtml(record.name)}</b></td>
-          <td>${escapeHtml(record.line_name)}</td>
-          <td>${escapeHtml(record.phone)}</td>
-          <td>${escapeHtml(record.member_status)}</td>
-          <td>${tags(record.wish_categories)}${record.wish_course_name ? `<br>${escapeHtml(record.wish_course_name)}` : ""}</td>
-          <td>${tags(record.needs)}</td>
-          <td>${tags(record.preferred_times)}${record.ideal_time ? `<br>${escapeHtml(record.ideal_time)}` : ""}</td>
-          <td>${escapeHtml(record.frequency || "-")}<br>${escapeHtml(record.preferred_plan || "-")}<br>${escapeHtml(record.acceptable_price || "-")}</td>
-          <td>${escapeHtml(record.source || "direct")}<br>${escapeHtml(record.utm_campaign || "")}</td>
-        </tr>
+      list.innerHTML = filtered.map((record) => `
+        <article class="record-card">
+          <div class="record-title">
+            <div>
+              <b>${textOrDash(record.name)}</b>
+              <small>${formatDate(record.submitted_at)}｜${textOrDash(record.phone)}｜LINE：${textOrDash(record.line_name)}</small>
+            </div>
+            <span class="status-pill">${textOrDash(record.member_status)}</span>
+          </div>
+          <div class="record-grid">
+            <div class="record-field">
+              <label>許願課程</label>
+              ${tags(record.wish_categories)}
+              <p>${record.wish_course_name ? escapeHtml(record.wish_course_name) : ""}</p>
+            </div>
+            <div class="record-field">
+              <label>主要需求</label>
+              ${tags(record.needs)}
+            </div>
+            <div class="record-field">
+              <label>可上時段</label>
+              ${tags(record.preferred_times)}
+              <p>${record.ideal_time ? escapeHtml(record.ideal_time) : ""}</p>
+            </div>
+            <div class="record-field">
+              <label>頻率 / 方案 / 預算</label>
+              <p>${joinLines([record.frequency, record.preferred_plan, record.acceptable_price])}</p>
+            </div>
+            <div class="record-field">
+              <label>通知方式</label>
+              ${tags(record.notify_methods)}
+            </div>
+            <div class="record-field">
+              <label>來源</label>
+              <p>${joinLines([record.source || "direct", record.utm_source, record.utm_medium, record.utm_campaign])}</p>
+            </div>
+            <div class="record-field">
+              <label>許願原因</label>
+              <p>${textOrDash(record.wish_reason)}</p>
+            </div>
+            <div class="record-field">
+              <label>備註</label>
+              <p>${textOrDash(record.note)}</p>
+            </div>
+          </div>
+        </article>
       `).join("");
     }
 
