@@ -11,7 +11,7 @@
 // 5. 複製 Web App URL，貼到 index.html 和 dashboard.html 的 API_ENDPOINT
 // ============================================================
 
-const SPREADSHEET_ID = '請貼上你的試算表 ID';
+const SPREADSHEET_ID = '1mBc9ExskBr619dABYJVEz_OGTfpdx-oJaMscmgQGi6M';
 const SHEET_NAME = '課程許願池';
 
 const HEADERS = [
