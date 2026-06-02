@@ -815,7 +815,7 @@
     const STORAGE_KEY = "wule_course_wishlist_submissions";
     const DRAFT_KEY = "wule_course_wishlist_draft";
     // Paste the deployed Google Apps Script Web App URL here.
-    const API_ENDPOINT = "";
+    const API_ENDPOINT = "https://script.google.com/macros/s/AKfycbxt2owtHcHV6846YKKmOvmoetcDmq2uXLAow3Lctz6wOQURZZPJyPp2MaotVPttzxmD/exec";
 
     const form = document.getElementById("wishlistForm");
     const submitBtn = document.getElementById("submitBtn");
@@ -1006,11 +1006,39 @@
 
     async function sendToApi(payload) {
       if (!API_ENDPOINT) throw new Error("API endpoint is not configured");
+      await checkApiReady();
       await fetch(API_ENDPOINT, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(toApiPayload(payload))
+      });
+    }
+
+    function checkApiReady() {
+      return new Promise((resolve, reject) => {
+        const callback = `wishlistSubmitCheck_${Date.now()}`;
+        const script = document.createElement("script");
+        const separator = API_ENDPOINT.includes("?") ? "&" : "?";
+
+        window[callback] = (payload) => {
+          delete window[callback];
+          script.remove();
+          if (payload && payload.status === "success") {
+            resolve();
+          } else {
+            reject(new Error(payload && payload.message ? payload.message : "後台尚未設定完成"));
+          }
+        };
+
+        script.onerror = () => {
+          delete window[callback];
+          script.remove();
+          reject(new Error("無法連線到後台"));
+        };
+
+        script.src = `${API_ENDPOINT}${separator}callback=${callback}&check=${Date.now()}`;
+        document.body.appendChild(script);
       });
     }
 
@@ -1045,7 +1073,7 @@
         successView.classList.add("show");
       } catch (error) {
         saveLocal(payload);
-        showError("目前表單尚未連上後台，資料只先保留在這台裝置。請先透過 LINE 聯繫武樂，或稍後再送出。");
+        showError(`目前表單後台尚未設定完成，資料只先保留在這台裝置。請先透過 LINE 聯繫武樂，或稍後再送出。${error.message ? "（" + error.message + "）" : ""}`);
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = "送出課程許願";
