@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>課程許願池 Dashboard｜武樂運動空間</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      --ink: #1f2a37;
+      --muted: #667180;
+      --line: #eadfd4;
+      --bg: #f7efe6;
+      --card: #fff;
+      --warm: #d96b2a;
+      --warm-dark: #af4b19;
+      --green: #1f8a70;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.65;
+    }
+    a { color: inherit; }
+    button, select { font: inherit; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px clamp(16px, 4vw, 42px);
+      background: rgba(255,255,255,.92);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+      text-decoration: none;
+    }
+    .brand img {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .btn {
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 13px;
+      border: 0;
+      border-radius: var(--radius);
+      background: var(--warm);
+      color: white;
+      font-weight: 900;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--warm-dark); }
+    .btn.secondary {
+      background: #24313f;
+    }
+    .page {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 30px clamp(14px, 4vw, 32px) 56px;
+    }
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 18px;
+      align-items: end;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: clamp(1.7rem, 4vw, 2.6rem);
+      line-height: 1.2;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .stat b {
+      display: block;
+      font-size: 1.8rem;
+      line-height: 1.1;
+    }
+    .stat span {
+      color: var(--muted);
+      font-size: .88rem;
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 14px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .filter label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 900;
+      font-size: .86rem;
+    }
+    select {
+      width: 100%;
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 1.5px solid #dfd2c7;
+      border-radius: var(--radius);
+      background: #fffdf9;
+      color: var(--ink);
+    }
+    .rank-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      overflow: hidden;
+    }
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 1.05rem;
+    }
+    .rank-list {
+      display: grid;
+      gap: 10px;
+    }
+    .rank-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .rank-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 800;
+      font-size: .92rem;
+    }
+    .bar {
+      grid-column: 1 / -1;
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #f0e6da;
+    }
+    .bar span {
+      display: block;
+      height: 100%;
+      background: var(--warm);
+    }
+    .tag {
+      color: var(--warm-dark);
+      background: #fff0df;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-weight: 900;
+      font-size: .78rem;
+    }
+    .table-panel {
+      padding: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      font-size: .88rem;
+    }
+    th, td {
+      padding: 12px 10px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+    th {
+      position: sticky;
+      top: 63px;
+      z-index: 2;
+      background: #fffaf4;
+      font-size: .78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    td {
+      min-width: 110px;
+    }
+    .list-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .list-tags span {
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #f4eadf;
+      color: #47515d;
+      font-weight: 800;
+      font-size: .76rem;
+    }
+    .empty {
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .ratio {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .ratio-card {
+      padding: 14px;
+      border-radius: var(--radius);
+      background: #fffaf4;
+      border: 1px solid var(--line);
+    }
+    .ratio-card b {
+      display: block;
+      font-size: 1.5rem;
+    }
+    .ratio-card span {
+      color: var(--muted);
+      font-size: .84rem;
+    }
+    @media (max-width: 920px) {
+      .stats, .rank-grid { grid-template-columns: 1fr 1fr; }
+      .filters { grid-template-columns: 1fr; }
+      .hero { display: block; }
+      .hero .actions { margin-top: 12px; }
+    }
+    @media (max-width: 620px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+      .btn { width: 100%; }
+      .stats, .rank-grid { grid-template-columns: 1fr; }
+      .table-panel { overflow-x: auto; }
+      th { top: 112px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <img src="../survey/logo.jpg" alt="武樂運動空間" />
+      <span>課程許願池 Dashboard</span>
+    </a>
+    <div class="actions">
+      <a class="btn secondary" href="index.html">回填寫頁</a>
+      <button class="btn" type="button" id="exportBtn">匯出 CSV</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1>課程需求總覽</h1>
+        <p>快速看出大家想上什麼課、需要什麼、什麼時間最容易開班。</p>
+      </div>
+    </section>
+
+    <section class="stats" aria-label="總覽數據">
+      <div class="stat"><b id="totalCount">0</b><span>總填寫數</span></div>
+      <div class="stat"><b id="adultCount">0</b><span>成人課程意向</span></div>
+      <div class="stat"><b id="childCount">0</b><span>兒童課程意向</span></div>
+      <div class="stat"><b id="latestDate">-</b><span>最近填寫</span></div>
+    </section>
+
+    <section class="filters" aria-label="篩選">
+      <div class="filter">
+        <label for="categoryFilter">依課程類型篩選</label>
+        <select id="categoryFilter"><option value="">全部課程</option></select>
+      </div>
+      <div class="filter">
+        <label for="timeFilter">依上課時段篩選</label>
+        <select id="timeFilter"><option value="">全部時段</option></select>
+      </div>
+      <div class="filter">
+        <label for="statusFilter">依學員狀態篩選</label>
+        <select id="statusFilter"><option value="">全部狀態</option></select>
+      </div>
+    </section>
+
+    <section class="rank-grid">
+      <div class="panel">
+        <h2>最多人許願的課程排行</h2>
+        <div class="rank-list" id="courseRank"></div>
+      </div>
+      <div class="panel">
+        <h2>最多人選擇的需求排行</h2>
+        <div class="rank-list" id="needsRank"></div>
+      </div>
+      <div class="panel">
+        <h2>最熱門的上課時段</h2>
+        <div class="rank-list" id="timeRank"></div>
+      </div>
+      <div class="panel">
+        <h2>成人課程與兒童課程比例</h2>
+        <div class="ratio">
+          <div class="ratio-card"><b id="adultRatio">0%</b><span>成人課程</span></div>
+          <div class="ratio-card"><b id="childRatio">0%</b><span>兒童課程</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel table-panel">
+      <table>
+        <thead>
+          <tr>
+            <th>送出時間</th>
+            <th>姓名</th>
+            <th>LINE</th>
+            <th>手機</th>
+            <th>狀態</th>
+            <th>許願課程</th>
+            <th>需求</th>
+            <th>可上時段</th>
+            <th>方案/預算</th>
+            <th>來源</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty" id="emptyState">目前還沒有資料。先到填寫頁送出一筆測試，就會出現在這裡。</div>
+    </section>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "wule_course_wishlist_submissions";
+    const adultCategories = ["瑜伽", "伸展放鬆", "瑜伽輪", "ARC 脊椎訓練", "肌力訓練", "階梯有氧", "飛輪", "空中環", "舞蹈", "太極／太極劍", "樂齡運動", "皮拉提斯", "成人其他"];
+    const childCategories = ["兒童拳擊", "兒童武術", "兒童體適能", "球類運動", "翻滾課", "兒童舞蹈", "寒暑假營隊", "兒童其他"];
+
+    const categoryFilter = document.getElementById("categoryFilter");
+    const timeFilter = document.getElementById("timeFilter");
+    const statusFilter = document.getElementById("statusFilter");
+
+    function readSubmissions() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    function uniq(items) {
+      return [...new Set(items.filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+    }
+
+    function countItems(records, key) {
+      const counts = {};
+      records.forEach((record) => {
+        (record[key] || []).forEach((item) => {
+          counts[item] = (counts[item] || 0) + 1;
+        });
+      });
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    }
+
+    function renderRank(id, rows) {
+      const box = document.getElementById(id);
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">暫無資料</div>';
+        return;
+      }
+      const max = rows[0][1] || 1;
+      box.innerHTML = rows.slice(0, 8).map(([name, count]) => `
+        <div class="rank-item">
+          <div class="rank-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+          <span class="tag">${count}</span>
+          <div class="bar"><span style="width:${Math.max(8, Math.round(count / max * 100))}%"></span></div>
+        </div>
+      `).join("");
+    }
+
+    function tags(items) {
+      if (!items || !items.length) return "-";
+      return `<div class="list-tags">${items.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>`;
+    }
+
+    function formatDate(iso) {
+      if (!iso) return "-";
+      return new Date(iso).toLocaleString("zh-TW", {
+        timeZone: "Asia/Taipei",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+
+    function filterRecords(records) {
+      const category = categoryFilter.value;
+      const time = timeFilter.value;
+      const status = statusFilter.value;
+      return records.filter((record) => {
+        const categoryOk = !category || (record.wish_categories || []).includes(category);
+        const timeOk = !time || (record.preferred_times || []).includes(time);
+        const statusOk = !status || record.member_status === status;
+        return categoryOk && timeOk && statusOk;
+      });
+    }
+
+    function fillFilters(records) {
+      const current = [categoryFilter.value, timeFilter.value, statusFilter.value];
+      const categories = uniq(records.flatMap((record) => record.wish_categories || []));
+      const times = uniq(records.flatMap((record) => record.preferred_times || []));
+      const statuses = uniq(records.map((record) => record.member_status));
+
+      categoryFilter.innerHTML = '<option value="">全部課程</option>' + categories.map((item) => `<option>${escapeHtml(item)}</option>`).join("");
+      timeFilter.innerHTML = '<option value="">全部時段</option>' + times.map((item) => `<option>${escapeHtml(item)}</option>`).join("");
+      statusFilter.innerHTML = '<option value="">全部狀態</option>' + statuses.map((item) => `<option>${escapeHtml(item)}</option>`).join("");
+      [categoryFilter.value, timeFilter.value, statusFilter.value] = current;
+    }
+
+    function hasAdult(record) {
+      return (record.wish_categories || []).some((item) => adultCategories.includes(item));
+    }
+
+    function hasChild(record) {
+      return (record.wish_categories || []).some((item) => childCategories.includes(item));
+    }
+
+    function render() {
+      const records = readSubmissions();
+      fillFilters(records);
+      const filtered = filterRecords(records);
+      const adultCount = filtered.filter(hasAdult).length;
+      const childCount = filtered.filter(hasChild).length;
+      const ratioBase = Math.max(1, adultCount + childCount);
+
+      document.getElementById("totalCount").textContent = filtered.length;
+      document.getElementById("adultCount").textContent = adultCount;
+      document.getElementById("childCount").textContent = childCount;
+      document.getElementById("adultRatio").textContent = `${Math.round(adultCount / ratioBase * 100)}%`;
+      document.getElementById("childRatio").textContent = `${Math.round(childCount / ratioBase * 100)}%`;
+      document.getElementById("latestDate").textContent = filtered[0] ? formatDate(filtered[0].submitted_at) : "-";
+
+      renderRank("courseRank", countItems(filtered, "wish_categories"));
+      renderRank("needsRank", countItems(filtered, "needs"));
+      renderRank("timeRank", countItems(filtered, "preferred_times"));
+
+      const body = document.getElementById("tableBody");
+      document.getElementById("emptyState").style.display = filtered.length ? "none" : "block";
+      body.innerHTML = filtered.map((record) => `
+        <tr>
+          <td>${formatDate(record.submitted_at)}</td>
+          <td><b>${escapeHtml(record.name)}</b></td>
+          <td>${escapeHtml(record.line_name)}</td>
+          <td>${escapeHtml(record.phone)}</td>
+          <td>${escapeHtml(record.member_status)}</td>
+          <td>${tags(record.wish_categories)}${record.wish_course_name ? `<br>${escapeHtml(record.wish_course_name)}` : ""}</td>
+          <td>${tags(record.needs)}</td>
+          <td>${tags(record.preferred_times)}${record.ideal_time ? `<br>${escapeHtml(record.ideal_time)}` : ""}</td>
+          <td>${escapeHtml(record.frequency || "-")}<br>${escapeHtml(record.preferred_plan || "-")}<br>${escapeHtml(record.acceptable_price || "-")}</td>
+          <td>${escapeHtml(record.source || "direct")}<br>${escapeHtml(record.utm_campaign || "")}</td>
+        </tr>
+      `).join("");
+    }
+
+    function csvValue(value) {
+      if (Array.isArray(value)) value = value.join("、");
+      return `"${String(value || "").replace(/"/g, '""')}"`;
+    }
+
+    function exportCsv() {
+      const records = filterRecords(readSubmissions());
+      const headers = ["submitted_at", "name", "line_name", "phone", "member_status", "wish_categories", "wish_course_name", "wish_reason", "needs", "preferred_times", "ideal_time", "frequency", "preferred_plan", "acceptable_price", "notify_methods", "note", "source", "utm_source", "utm_medium", "utm_campaign", "status"];
+      const rows = [headers.join(",")].concat(records.map((record) => headers.map((key) => csvValue(record[key])).join(",")));
+      const blob = new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `wule-course-wishlist-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    categoryFilter.addEventListener("change", render);
+    timeFilter.addEventListener("change", render);
+    statusFilter.addEventListener("change", render);
+    document.getElementById("exportBtn").addEventListener("click", exportCsv);
+
+    render();
+  </script>
+</body>
+</html>
