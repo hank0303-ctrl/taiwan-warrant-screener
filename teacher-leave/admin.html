@@ -221,11 +221,11 @@
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() + offset);
-      return d.toISOString().slice(0, 10);
+      return formatDateOnly(d);
     }
 
     function getTag(item) {
-      const leaveDate = String(item.leave_date || '').slice(0, 10);
+      const leaveDate = formatDateOnly(item.leave_date);
       const urgent =
         item.substitute_status === '尚未找到，需要教室協助' ||
         item.substitute_status === '課程建議停課' ||
@@ -307,13 +307,15 @@
 
       tbody.innerHTML = items.map(item => {
         const tag = getTag(item);
+        const leaveDate = formatDateOnly(item.leave_date);
+        const dateDetail = formatDateList(item.affected_period || item.leave_date);
         return `
           <tr onclick="showDetail('${item.row}')">
             <td><span class="tag ${tag.level}">${tag.text}</span></td>
-            <td>${escapeHtml(item.leave_date)}</td>
+            <td>${escapeHtml(leaveDate)}</td>
             <td>${escapeHtml(item.teacher_name)}</td>
             <td>${escapeHtml(item.leave_type)}</td>
-            <td>${escapeHtml(item.affected_period || item.leave_date)}</td>
+            <td>${escapeHtml(dateDetail)}</td>
             <td>${escapeHtml(item.affected_class)}</td>
             <td>${escapeHtml(item.substitute_status)}</td>
             <td>${escapeHtml(item.admin_status)}</td>
@@ -330,12 +332,14 @@
       if (!item) return;
 
       const tag = getTag(item);
+      const leaveDate = formatDateOnly(item.leave_date);
+      const dateDetail = formatDateList(item.affected_period || item.leave_date);
       const fields = [
         ['送出時間', formatDateTime(item.submitted_at)],
         ['老師姓名', item.teacher_name],
         ['請假類型', item.leave_type],
-        ['請假日期', item.leave_date],
-        ['請假日期明細', item.affected_period || item.leave_date],
+        ['請假日期', leaveDate],
+        ['請假日期明細', dateDetail],
         ['請假課程', item.affected_class],
         ['代課狀態', item.substitute_status],
         ['代課老師姓名', item.substitute_teacher],
@@ -346,7 +350,7 @@
       document.getElementById('detail').innerHTML = `
         <div class="detail-head">
           <div>
-            <h2>${escapeHtml(item.leave_date)}｜${escapeHtml(item.teacher_name)}</h2>
+            <h2>${escapeHtml(leaveDate)}｜${escapeHtml(item.teacher_name)}</h2>
             <span class="tag ${tag.level}">${tag.text}</span>
           </div>
           <div>
@@ -396,7 +400,12 @@
         'substitute_status','substitute_teacher','reschedule_status','reschedule_date','reschedule_time',
         'leave_reason','note','admin_status'
       ];
-      const rows = filteredItems().map(item => headers.map(key => csvCell(item[key])).join(','));
+      const rows = filteredItems().map(item => headers.map(key => {
+        if (key === 'leave_date') return csvCell(formatDateOnly(item[key]));
+        if (key === 'affected_period') return csvCell(formatDateList(item[key]));
+        if (key === 'submitted_at') return csvCell(formatDateTime(item[key]));
+        return csvCell(item[key]);
+      }).join(','));
       const csv = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -416,6 +425,38 @@
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return value;
       return date.toLocaleString('zh-TW', { hour12: false });
+    }
+
+    function formatDateOnly(value) {
+      if (!value) return '';
+      if (value instanceof Date) {
+        return value.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+      }
+
+      const text = String(value).trim();
+      if (!text) return '';
+
+      if (text.includes('T')) {
+        const date = new Date(text);
+        if (!Number.isNaN(date.getTime())) {
+          return date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+        }
+      }
+
+      const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+      if (match) {
+        return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+      }
+
+      return text;
+    }
+
+    function formatDateList(value) {
+      if (!value) return '';
+      return String(value)
+        .split('、')
+        .map(part => formatDateOnly(part))
+        .join('、');
     }
 
     function escapeHtml(value) {
