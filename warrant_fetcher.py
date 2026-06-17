@@ -342,7 +342,7 @@ def _parse_mis_row(row):
     }
 
 
-def fetch_prices_mis(warrant_list, batch_size=100, delay=0.25):
+def fetch_prices_mis(warrant_list, batch_size=80, delay=0.75):
     """
     批次查詢 TWSE MIS API 取得即時報價
     注意：MIS URL 約 1500 字元上限，batch_size 最大 100
@@ -350,30 +350,73 @@ def fetch_prices_mis(warrant_list, batch_size=100, delay=0.25):
     batch_size = min(batch_size, 100)
     result = {}
     total = len(warrant_list)
+    failed_batches = []
+    session = requests.Session()
+    session.headers.update(HEADERS)
     print(f'  批次查詢 MIS，共 {total} 支（每批 {batch_size}，預估 {total//batch_size+1} 次）...')
 
+    def fetch_batch(batch, batch_no, retries=3):
+        ex_ch = '|'.join(f'{w["exchange"]}_{w["code"]}.tw' for w in batch)
+        url = f'{MIS_URL}?ex_ch={ex_ch}&json=1&delay=0'
+        last_error = None
+        for attempt in range(1, retries + 1):
+            try:
+                r = session.get(url, timeout=30)
+                r.raise_for_status()
+                msgs = r.json().get('msgArray', [])
+                exch_map = {w['code']: w.get('exchange', 'tse') for w in batch}
+                parsed_count = 0
+                for row in msgs:
+                    parsed = _parse_mis_row(row)
+                    # MIS no longer consistently includes expiry in nf; fill days_left
+                    # later from TWSE/TPEX warrant detail sources before final filtering.
+                    if parsed and parsed.get('close', 0) > 0:
+                        parsed['exchange'] = exch_map.get(parsed['code'], 'tse')
+                        result[parsed['code']] = parsed
+                        parsed_count += 1
+                return parsed_count
+            except Exception as e:
+                last_error = e
+                wait = min(20, 2 + attempt * 4)
+                print(f'  [MIS batch {batch_no}] 第 {attempt}/{retries} 次失敗: {e}，等待 {wait}s')
+                time.sleep(wait)
+        print(f'  [MIS batch {batch_no}] 放入補抓清單: {last_error}')
+        return None
+
+    consecutive_failures = 0
     for i in range(0, total, batch_size):
         batch = warrant_list[i:i + batch_size]
-        ex_ch = '|'.join(f'{w["exchange"]}_{w["code"]}.tw' for w in batch)
-        try:
-            url = f'{MIS_URL}?ex_ch={ex_ch}&json=1&delay=0'
-            r = requests.get(url, headers=HEADERS, timeout=20)
-            msgs = r.json().get('msgArray', [])
-            exch_map = {w['code']: w.get('exchange', 'tse') for w in batch}
-            for row in msgs:
-                parsed = _parse_mis_row(row)
-                # MIS no longer consistently includes expiry in nf; fill days_left
-                # later from TWSE/TPEX warrant detail sources before final filtering.
-                if parsed and parsed.get('close', 0) > 0:
-                    parsed['exchange'] = exch_map.get(parsed['code'], 'tse')
-                    result[parsed['code']] = parsed
-        except Exception as e:
-            print(f'  [MIS batch {i//batch_size+1}] 失敗: {e}')
+        batch_no = i // batch_size + 1
+        parsed_count = fetch_batch(batch, batch_no)
+        if parsed_count is None:
+            failed_batches.append((batch_no, batch))
+            consecutive_failures += 1
+        else:
+            consecutive_failures = 0
         progress = min(i + batch_size, total)
         print(f'  進度: {progress}/{total} ...', end='\r')
+        if consecutive_failures >= 5:
+            cooldown = 30
+            print(f'\n  [MIS] 連續 {consecutive_failures} 批失敗，暫停 {cooldown}s 讓交易所端恢復...')
+            time.sleep(cooldown)
+            consecutive_failures = 0
         time.sleep(delay)
 
+    if failed_batches:
+        print(f'\n  [MIS] 首輪失敗 {len(failed_batches)} 批，等待 45s 後二次補抓...')
+        time.sleep(45)
+        still_failed = []
+        for idx, (batch_no, batch) in enumerate(failed_batches, 1):
+            parsed_count = fetch_batch(batch, f'補抓{batch_no}', retries=4)
+            if parsed_count is None:
+                still_failed.append(batch_no)
+            print(f'  補抓進度: {idx}/{len(failed_batches)} ...', end='\r')
+            time.sleep(max(delay, 1.0))
+        failed_batches = still_failed
+
     print()
+    if failed_batches:
+        print(f'  [MIS] 仍有 {len(failed_batches)} 批失敗，將由安全門檻判斷是否允許覆蓋報表')
     print(f'  [MIS] 取得有效報價: {len(result)} 支')
     return result
 
