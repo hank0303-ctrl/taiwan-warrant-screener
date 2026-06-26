@@ -69,7 +69,31 @@
       background: #efe4d8;
       color: #5d4938;
     }
-    .table-wrap { overflow-x: auto; }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 18px 0 8px;
+      color: #3a2f27;
+    }
+    .section-title h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .section-count {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: #efe4d8;
+      color: #6d3d17;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .table-wrap { overflow-x: auto; margin-bottom: 14px; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -188,6 +212,10 @@
       <button class="secondary" type="button" onclick="exportCsv()">匯出 CSV</button>
     </section>
 
+    <section class="section-title">
+      <h2>待處理請假</h2>
+      <span id="pendingCount" class="section-count">0 筆</span>
+    </section>
     <section class="table-wrap">
       <table>
         <thead>
@@ -202,9 +230,32 @@
             <th>處理狀態</th>
           </tr>
         </thead>
-        <tbody id="tbody"></tbody>
+        <tbody id="pendingTbody"></tbody>
       </table>
-      <div id="empty" class="empty">目前沒有資料</div>
+      <div id="pendingEmpty" class="empty">目前沒有待處理資料</div>
+    </section>
+
+    <section class="section-title">
+      <h2>已完成</h2>
+      <span id="completedCount" class="section-count">0 筆</span>
+    </section>
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>標籤</th>
+            <th>請假日期</th>
+            <th>老師</th>
+            <th>請假類型</th>
+            <th>請假日期明細</th>
+            <th>請假課程</th>
+            <th>代課狀態</th>
+            <th>處理狀態</th>
+          </tr>
+        </thead>
+        <tbody id="completedTbody"></tbody>
+      </table>
+      <div id="completedEmpty" class="empty">目前沒有已完成資料</div>
     </section>
 
     <section id="detail" class="detail"></section>
@@ -297,33 +348,44 @@
         return (!keyword || haystack.includes(keyword)) &&
           (!status || item.admin_status === status) &&
           (!tag || itemTag === tag);
-      });
+      }).sort(sortByLeaveDate);
     }
 
     function render() {
-      const tbody = document.getElementById('tbody');
-      const empty = document.getElementById('empty');
       const items = filteredItems();
+      const pendingItems = items.filter(item => item.admin_status !== '已完成');
+      const completedItems = items.filter(item => item.admin_status === '已完成');
 
-      tbody.innerHTML = items.map(item => {
-        const tag = getTag(item);
-        const leaveDate = formatDateOnly(item.leave_date);
-        const dateDetail = formatDateList(item.affected_period || item.leave_date);
-        return `
-          <tr onclick="showDetail('${item.row}')">
-            <td><span class="tag ${tag.level}">${tag.text}</span></td>
-            <td>${escapeHtml(leaveDate)}</td>
-            <td>${escapeHtml(item.teacher_name)}</td>
-            <td>${escapeHtml(item.leave_type)}</td>
-            <td>${escapeHtml(dateDetail)}</td>
-            <td>${escapeHtml(item.affected_class)}</td>
-            <td>${escapeHtml(item.substitute_status)}</td>
-            <td>${escapeHtml(item.admin_status)}</td>
-          </tr>
-        `;
-      }).join('');
+      renderTable('pending', pendingItems);
+      renderTable('completed', completedItems);
+    }
 
+    function renderTable(type, items) {
+      const tbody = document.getElementById(`${type}Tbody`);
+      const empty = document.getElementById(`${type}Empty`);
+      const count = document.getElementById(`${type}Count`);
+
+      tbody.innerHTML = items.map(rowHtml).join('');
       empty.style.display = items.length ? 'none' : 'block';
+      count.textContent = `${items.length} 筆`;
+    }
+
+    function rowHtml(item) {
+      const tag = getTag(item);
+      const leaveDate = formatDateOnly(item.leave_date);
+      const dateDetail = formatDateList(item.affected_period || item.leave_date);
+      return `
+        <tr onclick="showDetail('${item.row}')">
+          <td><span class="tag ${tag.level}">${tag.text}</span></td>
+          <td>${escapeHtml(leaveDate)}</td>
+          <td>${escapeHtml(item.teacher_name)}</td>
+          <td>${escapeHtml(item.leave_type)}</td>
+          <td>${escapeHtml(dateDetail)}</td>
+          <td>${escapeHtml(item.affected_class)}</td>
+          <td>${escapeHtml(item.substitute_status)}</td>
+          <td>${escapeHtml(item.admin_status)}</td>
+        </tr>
+      `;
     }
 
     function showDetail(row) {
@@ -457,6 +519,21 @@
         .split('、')
         .map(part => formatDateOnly(part))
         .join('、');
+    }
+
+    function leaveDateTime(item) {
+      const date = formatDateOnly(item.leave_date);
+      if (!date) return Number.MAX_SAFE_INTEGER;
+      const time = new Date(`${date}T00:00:00+08:00`).getTime();
+      return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+    }
+
+    function sortByLeaveDate(a, b) {
+      const dateDiff = leaveDateTime(a) - leaveDateTime(b);
+      if (dateDiff) return dateDiff;
+      const rowA = Number(a.row) || 0;
+      const rowB = Number(b.row) || 0;
+      return rowB - rowA;
     }
 
     function escapeHtml(value) {
